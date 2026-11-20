@@ -30,3 +30,8 @@ notes/
 # Local DuckDB files (generated data)
 *.duckdb
 *.duckdb.wal
+
+# dbt build output inside the benchmark project
+benchmarks/**/target/
+benchmarks/**/logs/
+benchmarks/**/dbt_packages/
