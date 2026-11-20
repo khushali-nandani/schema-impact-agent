@@ -4,7 +4,8 @@ Pass the project as it is *before* the change: its SQL is what refers to the old
 so its lineage tells us who is affected.
 
 Effects (deterministic, no LLM):
-- breaking:      the change makes affected queries fail (rename, drop, dropped table)
+- breaking:      the change makes affected queries fail (rename, drop, dropped table
+                 or model)
 - needs_review:  the queries still run but results may differ (type change, changed logic);
                  a later layer decides how risky that is
 
@@ -21,6 +22,7 @@ from schema_impact.core.changes import (
     ColumnRenamed,
     ColumnTypeChanged,
     ModelChanged,
+    ModelDropped,
     TableDropped,
 )
 from schema_impact.core.lineage import ColumnRef, Edge, build_lineage
@@ -72,13 +74,13 @@ def _starting_columns(
             return [ColumnRef(table, column)]
         case TableDropped(table):
             return [ColumnRef(table, column) for column in project.schema.get(table, {})]
-        case ModelChanged(model):
+        case ModelChanged(model) | ModelDropped(model):
             return [ColumnRef(model, column) for column in model_columns.get(model, [])]
     raise TypeError(f"Unknown change: {change!r}")
 
 
 def _effect_of(change: Change) -> str:
-    if isinstance(change, ColumnRenamed | ColumnDropped | TableDropped):
+    if isinstance(change, ColumnRenamed | ColumnDropped | TableDropped | ModelDropped):
         return BREAKING
     return NEEDS_REVIEW
 
