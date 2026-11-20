@@ -61,3 +61,23 @@ A diff cannot tell a rename from a drop plus an add. A column is treated as rena
 ## 15. Impact effect is deterministic and does not weaken along a chain
 
 Rename, drop and dropped table are `breaking`; type change and changed logic are `needs_review`. No LLM is needed for the first group: a missing column always fails. Every model further down a chain gets the same effect as the original change. `needs_review` is deliberately left for L2 to judge. Impact is computed on the "before" project, because its SQL is what refers to the old columns.
+
+## 16. The judge is an interface and is passed to the graph, not kept in the state
+
+`Judge` is a one-method protocol (`judge(impact) -> Judgment`). The graph receives it in `build_graph(judge)` because it is a live object (a model connection) that has no place in a checkpoint. Tests use a `FakeJudge`, so no model is needed in CI; `OllamaJudge` is the real one, and another model can be swapped in without touching the graph.
+
+## 17. Breaking impacts never go to the LLM
+
+A renamed or dropped column always fails, so the impact is high risk by definition and is explained from templates. Only `needs_review` impacts (type change, changed logic) are sent to the judge. The LLM is used only where the deterministic layer cannot decide.
+
+## 18. A model answer that cannot be understood falls back to high risk; connection errors are raised
+
+`OllamaJudge` asks for JSON, validates it, retries with a correction, and if it still fails returns `high` risk so a person looks at it. Guessing `low` would hide problems. If Ollama is unreachable the error is raised instead: calling that "high risk" would be a lie.
+
+## 19. State holds dataclasses; the checkpointer gets an allow-list
+
+Keeping `Impact`, `Verdict` and `Project` in the state worked, with three consequences found by tests: a dataclass cannot be a dict key (so judgments are a list of `Verdict` pairs), a tuple comes back from a checkpoint as a list (so `Impact.path` is normalised in `__post_init__`), and LangGraph will block unregistered types in future versions (so the saver gets an allow-list built by scanning the modules).
+
+## 20. Approval answers are a boolean; paused reviews live in memory
+
+`Command(resume=True/False)` approves or rejects. A note from the reviewer can be added later (L5). The default checkpointer is in memory, so a paused review survives a restart of the graph object but not of the process; a persistent store (SQLite) comes with the CLI and GitHub Action in L5, where review and resume run in different processes.
