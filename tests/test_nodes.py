@@ -1,13 +1,13 @@
 import pytest
+
+from project_edits import change_type, rename_column
+from schema_impact.agent.judge import HIGH, LOW, FakeJudge, Judgment, Verdict
 from schema_impact.agent.nodes import (
     compute_impact_node,
     make_classify_risk_node,
     parse_diff_node,
     report_node,
 )
-
-from project_edits import change_type, rename_column
-from schema_impact.agent.judge import HIGH, LOW, FakeJudge, Judgment, Verdict
 from schema_impact.agent.state import new_review
 from schema_impact.core.changes import ColumnDropped, ColumnRenamed
 from schema_impact.core.impact import BREAKING, NEEDS_REVIEW, Impact
