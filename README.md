@@ -1,6 +1,6 @@
 # schema-impact-agent
 
-[![CI](https://github.com/Khu1208/schema-impact-agent/actions/workflows/ci.yml/badge.svg)](https://github.com/Khu1208/schema-impact-agent/actions/workflows/ci.yml)
+[![CI](https://github.com/khushali-nandani/schema-impact-agent/actions/workflows/ci.yml/badge.svg)](https://github.com/khushali-nandani/schema-impact-agent/actions/workflows/ci.yml)
 
 Given a SQL/dbt change (rename, drop, type change, logic change), find every downstream model and column it affects, classify it as breaking, silent, or safe, and pause for human approval on risky changes.
 
