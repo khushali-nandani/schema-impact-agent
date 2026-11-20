@@ -14,11 +14,11 @@ See [docs/architecture.md](docs/architecture.md) for the full problem statement 
 
 ## Status
 
-Early development. Only the project scaffold exists so far.
+Early development. L0 (column lineage) is done; change detection starts in L1.
 
 | Level | Scope | Status |
 |---|---|---|
-| L0 | Column-level lineage from SQL (incl. JOIN/WHERE/GROUP BY) | Planned |
+| L0 | Column-level lineage from SQL (incl. JOIN/WHERE/GROUP BY/HAVING/ORDER BY) | Done |
 | L1 | Change detection and impact analysis | Planned |
 | L2 | LangGraph agent with human approval | Planned |
 | L3 | Benchmark on jaffle_shop with mutation testing | Planned |
