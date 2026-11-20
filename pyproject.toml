@@ -9,6 +9,8 @@ description = "LangGraph agent that predicts which downstream SQL models and col
 readme = "README.md"
 requires-python = ">=3.11"
 dependencies = [
+    "langgraph>=1.2.24",
+    "ollama>=0.6.3",
     "sqlglot>=25",
 ]
 

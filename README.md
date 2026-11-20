@@ -14,13 +14,13 @@ See [docs/architecture.md](docs/architecture.md) for the full problem statement 
 
 ## Status
 
-Early development. L0 (column lineage) and L1 (change detection and impact) are done; the LangGraph agent starts in L2.
+Early development. L0 (column lineage), L1 (change detection and impact) and L2 (LangGraph agent with human approval) are done; the benchmark starts in L3.
 
 | Level | Scope | Status |
 |---|---|---|
 | L0 | Column-level lineage from SQL (incl. JOIN/WHERE/GROUP BY/HAVING/ORDER BY) | Done |
 | L1 | Change detection and impact analysis | Done |
-| L2 | LangGraph agent with human approval | Planned |
+| L2 | LangGraph agent with human approval | Done |
 | L3 | Benchmark on jaffle_shop with mutation testing | Planned |
 | L4 | Adapters: SQL folder, dbt manifest, dialects | Planned |
 | L5 | CLI and GitHub Action | Planned |
@@ -35,3 +35,12 @@ uv run pytest                 # run tests
 uv run ruff check .           # lint
 uv run ruff format --check .  # format check
 ```
+
+### Try the agent with a local model
+
+```bash
+ollama pull qwen2.5-coder:7b
+uv run python examples/demo_ollama.py   # changes orders.amount to VARCHAR on the toy project
+```
+
+The tests never need a model: they use a fake judge.

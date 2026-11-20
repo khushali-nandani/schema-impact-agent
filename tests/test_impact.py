@@ -23,7 +23,7 @@ from schema_impact.core.changes import (
     TableDropped,
     diff_projects,
 )
-from schema_impact.core.impact import BREAKING, NEEDS_REVIEW, compute_impact
+from schema_impact.core.impact import BREAKING, NEEDS_REVIEW, Impact, compute_impact
 from schema_impact.core.lineage import ColumnRef
 from schema_impact.core.registry import load_project
 
@@ -204,3 +204,17 @@ def test_dropping_a_model_nobody_reads_affects_nothing_else(before):
 def test_dropping_a_model_via_diff(before):
     after = drop_model(before, "customer_totals")
     assert models(compute_impact(before, diff_projects(before, after))) == {"top_customers"}
+
+
+def test_impact_keeps_its_path_a_tuple_even_if_built_from_a_list():
+    # a checkpoint round trip hands tuples back as lists
+    impact = Impact(
+        change=ColumnDropped("orders", "amount"),
+        model="customer_totals",
+        column="total",
+        roles=frozenset({"select"}),
+        effect=BREAKING,
+        path=[ColumnRef("orders", "amount"), ColumnRef("customer_totals", "total")],
+    )
+    assert isinstance(impact.path, tuple)
+    assert hash(impact) is not None
