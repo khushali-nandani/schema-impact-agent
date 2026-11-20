@@ -43,6 +43,11 @@ class Impact:
     effect: str  # BREAKING or NEEDS_REVIEW
     path: tuple[ColumnRef, ...]  # from the changed column to this place
 
+    def __post_init__(self) -> None:
+        # Always a tuple, so the impact stays hashable even when it was rebuilt from a
+        # checkpoint, which hands tuples back as lists.
+        object.__setattr__(self, "path", tuple(self.path))
+
 
 def compute_impact(project: Project, changes: list[Change]) -> list[Impact]:
     """Find every place affected by each change, following chains of models."""
