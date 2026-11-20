@@ -51,16 +51,22 @@ def build_lineage(project: Project) -> list[Edge]:
     return edges
 
 
+def _qualified(model: Model, project: Project) -> exp.Expression:
+    """Parse a model and qualify it: every column gets its table alias, `*` is expanded."""
+    parsed = sqlglot.parse_one(model.sql, read=project.dialect)
+    return qualify(parsed, schema=project.schema, dialect=project.dialect)
+
+
 def _select_edges(model: Model, project: Project) -> list[Edge]:
     """One edge per (source column, output column) pair of a model's SELECT."""
-    parsed = sqlglot.parse_one(model.sql, read=project.dialect)
+    query = _qualified(model, project)
     edges: dict[Edge, None] = {}  # dict keeps order and drops duplicates
 
-    for output_column in parsed.named_selects:
-        root = lineage(output_column, model.sql, schema=project.schema, dialect=project.dialect)
+    for output_column in query.named_selects:
+        root = lineage(output_column, query, schema=project.schema, dialect=project.dialect)
         target = ColumnRef(model.name, output_column)
         for leaf in _leaves(root):
-            source = _source_column(leaf)
+            source = _source_column(leaf, project.dialect)
             if source is not None:
                 edges[Edge(source=source, target=target, kind=SELECT)] = None
 
@@ -72,9 +78,7 @@ def _clause_edges(model: Model, project: Project) -> list[Edge]:
 
     These columns never reach an output column, yet changing them changes the model.
     """
-    parsed = sqlglot.parse_one(model.sql, read=project.dialect)
-    # qualify() puts a table alias on every column, so "status" becomes "o.status"
-    query = qualify(parsed, schema=project.schema, dialect=project.dialect)
+    query = _qualified(model, project)
     real_tables = {t.alias_or_name: t.name for t in query.find_all(exp.Table)}
     target = ColumnRef(model.name, None)
 
@@ -102,13 +106,13 @@ def _leaves(node: Node) -> list[Node]:
     return [n for n in node.walk() if not n.downstream]
 
 
-def _source_column(leaf: Node) -> ColumnRef | None:
-    """Turn a leaf like 'oi.quantity' (alias.column) into ColumnRef(order_items, quantity).
+def _source_column(leaf: Node, dialect: str) -> ColumnRef | None:
+    """Turn a leaf like '"oi"."quantity"' (alias.column) into ColumnRef(order_items, quantity).
 
     The alias is resolved through leaf.source, which is the real table. Leaves that do
     not come from a table (for example a literal such as `SELECT 1 AS x`) return None.
     """
     if not isinstance(leaf.source, exp.Table):
         return None
-    column = leaf.name.rsplit(".", 1)[-1]
+    column = exp.to_column(leaf.name, dialect=dialect).name
     return ColumnRef(table=leaf.source.name, column=column)
