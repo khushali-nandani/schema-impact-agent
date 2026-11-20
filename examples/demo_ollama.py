@@ -11,6 +11,7 @@ This script is a demo and is not part of the tests or CI.
 """
 
 import argparse
+import re
 import shutil
 import sys
 import tempfile
@@ -48,7 +49,10 @@ def main() -> int:
         changed = Path(tmp) / "toy_project"
         shutil.copytree(TOY_PROJECT, changed)
         schema = changed / "schema.sql"
-        schema.write_text(schema.read_text().replace("DECIMAL(10, 2)", "VARCHAR", 1))
+        # change the type of the "amount" column only (products.price is also a DECIMAL)
+        text, replaced = re.subn(r"(\bamount\s+)DECIMAL\(10, 2\)", r"\1VARCHAR", schema.read_text())
+        assert replaced == 1, "expected to change exactly one column"
+        schema.write_text(text)
         after = load_project(changed)
 
     judge = OllamaJudge(
