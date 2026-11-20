@@ -90,7 +90,14 @@ def _in_dependency_order(project: Project) -> list[Model]:
 def _models_read_by(model: Model, project: Project) -> set[str]:
     """Names of other models that this model reads in a FROM or JOIN."""
     parsed = sqlglot.parse_one(model.sql, read=project.dialect)
-    tables = {table.name for table in parsed.find_all(exp.Table)}
+    # scope.sources holds real tables as exp.Table and CTEs / subqueries as Scope, so a CTE that
+    # happens to share a model's name (WITH orders AS (...)) is not counted as a read of it
+    tables = {
+        source.name
+        for scope in traverse_scope(parsed)
+        for source in scope.sources.values()
+        if isinstance(source, exp.Table)
+    }
     return tables & set(project.models)
 
 
