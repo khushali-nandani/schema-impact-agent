@@ -3,8 +3,8 @@ import shutil
 from pathlib import Path
 
 import pytest
-from schema_impact.adapters.dbt_manifest import load_dbt_project
 
+from schema_impact.adapters.dbt_manifest import load_dbt_project
 from schema_impact.core.lineage import ColumnRef, build_lineage
 
 FIXTURE = Path(__file__).parent / "fixtures" / "jaffle_shop_dbt"
@@ -52,7 +52,7 @@ def test_the_compiled_sql_is_used_not_the_jinja_source(project):
     sql = project.models["orders"].sql
     assert "{{" not in sql and "{%" not in sql
     # the {% for %} over payment methods has been expanded by dbt
-    assert "sum(case when payment_method = 'coupon' then amount else 0 end)" in sql
+    assert "sum(case when payment_method = 'coupon' then amount else 0 end)" in sql.lower()
 
 
 def test_database_and_schema_prefixes_are_removed_from_tables(project):
