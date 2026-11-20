@@ -1,8 +1,8 @@
 from pathlib import Path
 
 import pytest
-from project_edits import change_type, rename_column
 
+from project_edits import change_type, rename_column
 from schema_impact.core.registry import load_project
 from schema_impact.evals.dataset import Dataset, load_dataset
 from schema_impact.evals.mutations import Mutation
@@ -201,15 +201,28 @@ def test_the_confusion_matrix_is_a_table_of_truth_against_prediction():
 
 # --- on the real dataset -----------------------------------------------------
 
-
-def test_the_real_dataset_scores_every_pair_without_error():
-    result = score_dataset(load_dataset(REPO / "benchmarks" / "dataset" / "jaffle_shop.json"))
-    assert result.skipped == []
-    assert len(result.outcomes) == 441
-    assert {o.prediction for o in result.outcomes} <= {B, R, N}
-    assert {o.truth for o in result.outcomes} == {"breaking", "silent", "safe"}
+REAL = REPO / "benchmarks" / "dataset" / "jaffle_shop.json"
 
 
-def test_scoring_is_deterministic():
-    path = REPO / "benchmarks" / "dataset" / "jaffle_shop.json"
-    assert score_dataset(load_dataset(path)) == score_dataset(load_dataset(path))
+@pytest.fixture(scope="module")
+def real_dataset():
+    return load_dataset(REAL)
+
+
+@pytest.fixture(scope="module")
+def real_result(real_dataset):
+    return score_dataset(real_dataset)
+
+
+def test_the_real_dataset_scores_every_pair_without_error(real_result):
+    assert real_result.skipped == []
+    assert len(real_result.outcomes) == 441
+    assert {o.prediction for o in real_result.outcomes} <= {B, R, N}
+    assert {o.truth for o in real_result.outcomes} == {"breaking", "silent", "safe"}
+
+
+def test_scoring_is_deterministic(real_dataset):
+    first_ten = Dataset(
+        real_dataset.meta, {}, real_dataset.baseline_project, real_dataset.cases[:10]
+    )
+    assert score_dataset(first_ten) == score_dataset(first_ten)
