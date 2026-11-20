@@ -1,9 +1,9 @@
 import pytest
 from langgraph.checkpoint.memory import InMemorySaver
 from langgraph.graph import END, START, StateGraph
-from schema_impact.agent.state import ReviewState, new_review
 
-from schema_impact.agent.judge import HIGH, LOW, Judgment
+from schema_impact.agent.judge import HIGH, LOW, Judgment, Verdict
+from schema_impact.agent.state import ReviewState, new_review
 from schema_impact.core.changes import ColumnDropped
 from schema_impact.core.impact import BREAKING, Impact
 from schema_impact.core.lineage import ColumnRef
@@ -49,7 +49,7 @@ def test_new_review_starts_with_empty_results(project):
     assert state["after"] is project
     assert state["changes"] == []
     assert state["impacts"] == []
-    assert state["judgments"] == {}
+    assert state["judgments"] == []
     assert state["needs_approval"] is False
     assert state["approved"] is None
     assert state["report"] == ""
@@ -61,12 +61,12 @@ def test_impacts_from_different_nodes_are_collected(project):
     assert result["impacts"] == [one, two]
 
 
-def test_judgments_from_different_nodes_are_merged(project):
+def test_judgments_from_different_nodes_are_collected(project):
     one, two = make_impact("customer_totals"), make_impact("top_customers")
-    first = Judgment(risk=HIGH, explanation="a", fix="b")
-    second = Judgment(risk=LOW, explanation="c", fix="d")
-    _, _, result = run(project, {"judgments": {one: first}}, {"judgments": {two: second}})
-    assert result["judgments"] == {one: first, two: second}
+    first = Verdict(one, Judgment(risk=HIGH, explanation="a", fix="b"))
+    second = Verdict(two, Judgment(risk=LOW, explanation="c", fix="d"))
+    _, _, result = run(project, {"judgments": [first]}, {"judgments": [second]})
+    assert result["judgments"] == [first, second]
 
 
 def test_plain_fields_are_overwritten_by_the_last_write(project):
@@ -76,14 +76,14 @@ def test_plain_fields_are_overwritten_by_the_last_write(project):
 
 def test_dataclasses_survive_the_checkpointer(project):
     impact = make_impact("customer_totals")
-    judgment = Judgment(risk=HIGH, explanation="why", fix="how")
+    verdict = Verdict(impact, Judgment(risk=HIGH, explanation="why", fix="how"))
     app, config, _ = run(
         project,
-        {"impacts": [impact], "judgments": {impact: judgment}},
+        {"impacts": [impact], "judgments": [verdict]},
         checkpointer=InMemorySaver(),
     )
     saved = app.get_state(config).values
     assert saved["impacts"] == [impact]
-    assert saved["judgments"] == {impact: judgment}
+    assert saved["judgments"] == [verdict]
     assert saved["impacts"][0].path == impact.path
     assert saved["before"].schema == project.schema
