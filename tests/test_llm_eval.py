@@ -1,6 +1,11 @@
 from pathlib import Path
 
 import pytest
+
+from project_edits import change_type, rename_column
+from schema_impact.agent.judge import HIGH, LOW, FakeJudge, Judgment
+from schema_impact.core.registry import load_project
+from schema_impact.evals.dataset import Dataset, load_dataset
 from schema_impact.evals.llm_eval import (
     JudgedItem,
     apply_judgments,
@@ -12,11 +17,6 @@ from schema_impact.evals.llm_eval import (
     load_judgments,
     save_judgments,
 )
-
-from project_edits import change_type, rename_column
-from schema_impact.agent.judge import HIGH, LOW, FakeJudge, Judgment
-from schema_impact.core.registry import load_project
-from schema_impact.evals.dataset import Dataset, load_dataset
 from schema_impact.evals.mutations import Mutation
 from schema_impact.evals.results import CaseResult
 from schema_impact.evals.scorer import (
