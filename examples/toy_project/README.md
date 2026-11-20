@@ -8,9 +8,10 @@ A small synthetic SQL project used as the test fixture for L0 and L1. All names 
 schema.sql                 source tables (DDL)
 models/customer_totals.sql revenue per customer
 models/product_sales.sql   units and revenue per product, excluding returned orders
+models/top_customers.sql   customers above a revenue threshold, reads from customer_totals
 ```
 
-A *model* is one `.sql` file containing a single `SELECT`. The model name is the file name without extension.
+A *model* is one `.sql` file containing a single `SELECT`. The model name is the file name without extension. A model can read a source table or another model: `top_customers` reads `customer_totals`, which gives the chain `orders.amount -> customer_totals.total -> top_customers.total`.
 
 ## Source tables
 
@@ -50,6 +51,19 @@ Roles: `select` feeds an output column, `join` is used in a JOIN condition, `whe
 | `order_items.product_id` | join | model |
 | `products.id` | join | model |
 | `orders.status` | where | model |
+
+### top_customers
+
+Upstream columns here are columns of the model `customer_totals`, not of a source table.
+
+| Upstream column | Role | Affects |
+|---|---|---|
+| `customer_totals.name` | select | `name` |
+| `customer_totals.total` | select | `total` |
+| `customer_totals.total` | where | model |
+| `customer_totals.total` | order_by | model |
+
+Because `total` is filtered with `WHERE total > 1000`, a change in the meaning of `customer_totals.total` (for example rupees to paise) changes `top_customers` without any error. That is a silent case.
 
 ## Safe and partial cases
 
