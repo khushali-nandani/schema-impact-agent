@@ -155,3 +155,37 @@ The effect is deterministic and passes unchanged to every model further down the
 - Added columns, tables and models are not reported.
 - A dropped table or model is traced only through the columns its readers use. A reader that touches no column, such as `SELECT COUNT(*) FROM order_items`, has no lineage edge and is not flagged. This is a known false negative; a table-level "reads" dependency would fix it.
 - Model logic changes are detected after normalising the SQL, but not described (which filter changed is not extracted).
+
+## Agent (L2)
+
+The agent wraps the deterministic core in a LangGraph graph. One review is one checkpoint thread.
+
+```
+parse_diff -> compute_impact -> classify_risk -> (needs approval?) -> human_approval -> report
+                                                       \-> (no) -----------------------> report
+```
+
+| Node | Job | LLM |
+|---|---|---|
+| `parse_diff` | `diff_projects(before, after)` | No |
+| `compute_impact` | `compute_impact(before, changes)` | No |
+| `classify_risk` | breaking impacts: high risk, explained from templates. `needs_review` impacts: asked to the judge | Only here |
+| `human_approval` | `interrupt()` with a summary; resume with `Command(resume=True/False)` | No |
+| `report` | plain-text report, ends with the decision | No |
+
+A review needs approval when any impact is breaking or the judge says `high`. Safe changes finish without a pause and never reach the judge.
+
+**Judge.** `Judge` is a one-method interface. `OllamaJudge` sends the facts of one impact (change, place, roles, path, and the SQL of the affected model) to a local model and asks for JSON (`risk`, `explanation`, `fix`) at temperature 0. The answer is validated and retried with a correction; if it still cannot be understood the result is `high` risk.
+
+**State and checkpointing.** The state holds the project's own dataclasses. `impacts` and `judgments` are appended by reducers; judgments are `Verdict(impact, judgment)` pairs. The checkpointer is given an allow-list of the project's dataclasses. Resuming runs the paused node again from the top, so nothing with a side effect (such as a model call) happens before `interrupt()`; the model is only called in the earlier `classify_risk` node and is not asked again on resume.
+
+### What the local model does in practice
+
+Run on the toy project with `qwen2.5-coder:7b` (`examples/demo_ollama.py`), changing `orders.amount` from DECIMAL to VARCHAR: valid JSON, about 20 seconds for three impacts on a laptop, and all three were judged `high`. The explanations are plausible but not reliable: they state that `SUM` "will fail" although the deterministic layer found that nothing fails, call a type change "data corruption", and every fix is "revert the change". So the model is not discriminating between impacts here and can overstate. Measuring how often it is right is what the L3 benchmark is for.
+
+### Known agent limits
+
+- Paused reviews are kept in memory only: they survive a restart of the graph object, not of the process (SQLite comes with the CLI in L5).
+- The report lists every affected column and the whole-model entry separately, so a chain produces a long report. Grouping by model is left for L5.
+- Each `needs_review` impact is judged separately, so a chain costs one model call per affected place.
+- An approval answer is a boolean; there is no reviewer note yet.
