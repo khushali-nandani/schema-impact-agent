@@ -171,3 +171,81 @@ def test_the_real_olist_project_loads_and_every_model_resolves():
     assert not [m.name for m in project.models.values() if "data/" in m.sql]
     sources = {e.target.table for e in build_lineage(project) if e.kind == SELECT}
     assert sources == set(project.models)
+
+
+# --- a source read with read_csv(...) options ----------------------------------------------------
+#
+# With an `external_location` that holds a "(", dbt-duckdb writes it as it is, so the source can
+# be `read_csv('data/x.csv', types={'price': 'VARCHAR'})`. The benchmark uses this to change a
+# column's type.
+
+PLAIN = "'data/olist_order_items_dataset.csv'"
+WITH_TYPES = "read_csv('data/olist_order_items_dataset.csv', types={'price': 'VARCHAR'})"
+
+
+@pytest.fixture
+def typed_project_dir(project_dir):
+    """The same project, with order_items read through read_csv(..., types=...)."""
+    manifest = project_dir / "target" / "manifest.json"
+    text = manifest.read_text()
+    assert PLAIN in text
+    manifest.write_text(text.replace(PLAIN, WITH_TYPES))
+    return project_dir
+
+
+def test_a_read_csv_call_in_a_model_is_replaced_by_the_name_of_its_source(typed_project_dir):
+    sql = load_dbt_project(typed_project_dir).models["stg_olist__order_items"].sql
+    assert "READ_CSV" not in sql.upper()
+    assert "olist__order_items" in sql
+
+
+def test_the_types_given_to_read_csv_are_in_the_schema(typed_project_dir):
+    types = load_dbt_project(typed_project_dir).schema["olist__order_items"]
+    assert types["price"] == "VARCHAR"  # overridden
+    assert types["freight_value"] == "DOUBLE"  # still sniffed
+    assert list(types)[:2] == ["order_id", "order_item_id"]
+
+
+def test_a_missing_csv_is_reported_for_a_read_csv_source_too(typed_project_dir):
+    (typed_project_dir / "data" / "olist_order_items_dataset.csv").unlink()
+    with pytest.raises(FileNotFoundError, match="olist_order_items_dataset.csv"):
+        load_dbt_project(typed_project_dir)
+
+
+def test_lineage_runs_on_a_source_read_with_read_csv(typed_project_dir):
+    edges = set(build_lineage(load_dbt_project(typed_project_dir)))
+    assert (
+        Edge(
+            ColumnRef("olist__order_items", "price"),
+            ColumnRef("stg_olist__order_items", "price"),
+            SELECT,
+        )
+        in edges
+    )
+
+
+def test_a_file_that_has_an_alias_in_a_model_is_replaced_too(tmp_path):
+    root = tmp_path / "p"
+    (root / "data").mkdir(parents=True)
+    (root / "data" / "t.csv").write_text("a,b\n1,2\n")
+    sql = "select o.a from 'data/t.csv' as o"
+    write_artifacts(root, {"model.p.m": model_node("m", sql)})
+    manifest = root / "target" / "manifest.json"
+    manifest.write_text(
+        json.dumps(
+            {
+                "nodes": json.loads(manifest.read_text())["nodes"],
+                "sources": {
+                    "source.p.raw.t": {
+                        "resource_type": "source",
+                        "name": "t",
+                        "source_name": "raw",
+                        "relation_name": "'data/t.csv'",
+                    }
+                },
+            }
+        )
+    )
+    project = load_dbt_project(root)
+    assert "raw__t" in project.models["m"].sql and "t.csv" not in project.models["m"].sql
+    assert list(project.schema["raw__t"]) == ["a", "b"]
