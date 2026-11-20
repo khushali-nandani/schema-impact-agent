@@ -1,20 +1,23 @@
 import pytest
+
+from project_edits import (
+    add_column,
+    add_model,
+    change_model_sql,
+    change_type,
+    drop_column,
+    drop_model,
+    drop_table,
+    rename_column,
+)
 from schema_impact.core.changes import (
     ColumnDropped,
     ColumnRenamed,
     ColumnTypeChanged,
     ModelChanged,
+    ModelDropped,
     TableDropped,
     diff_projects,
-)
-
-from project_edits import (
-    add_column,
-    change_model_sql,
-    change_type,
-    drop_column,
-    drop_table,
-    rename_column,
 )
 from schema_impact.core.registry import load_project
 
@@ -84,3 +87,13 @@ def test_several_changes_are_all_reported(before):
         ColumnRenamed("customers", "name", "full_name"),
         ColumnDropped("orders", "status"),
     ]
+
+
+def test_removed_model_is_detected(before):
+    after = drop_model(before, "top_customers")
+    assert diff_projects(before, after) == [ModelDropped("top_customers")]
+
+
+def test_added_model_is_not_a_change(before):
+    after = add_model(before, "extra", "SELECT id FROM orders")
+    assert diff_projects(before, after) == []

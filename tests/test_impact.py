@@ -5,12 +5,12 @@ orders, products), top_customers (reads customer_totals).
 """
 
 import pytest
-from schema_impact.core.impact import BREAKING, NEEDS_REVIEW, compute_impact
 
 from project_edits import (
     change_model_sql,
     change_type,
     drop_column,
+    drop_model,
     drop_table,
     rename_column,
 )
@@ -19,9 +19,11 @@ from schema_impact.core.changes import (
     ColumnRenamed,
     ColumnTypeChanged,
     ModelChanged,
+    ModelDropped,
     TableDropped,
     diff_projects,
 )
+from schema_impact.core.impact import BREAKING, NEEDS_REVIEW, compute_impact
 from schema_impact.core.lineage import ColumnRef
 from schema_impact.core.registry import load_project
 
@@ -183,3 +185,22 @@ def test_changes_that_edit_models_or_types_work_through_diff(before):
 def test_dropping_a_table_via_diff(before):
     after = drop_table(before, "order_items")
     assert models(compute_impact(before, diff_projects(before, after))) == {"product_sales"}
+
+
+def test_dropping_a_model_breaks_the_models_that_read_it(before):
+    impacts = compute_impact(before, [ModelDropped("customer_totals")])
+    assert places(impacts) == {
+        ("top_customers", "name"),
+        ("top_customers", "total"),
+        ("top_customers", None),
+    }
+    assert {i.effect for i in impacts} == {BREAKING}
+
+
+def test_dropping_a_model_nobody_reads_affects_nothing_else(before):
+    assert compute_impact(before, [ModelDropped("product_sales")]) == []
+
+
+def test_dropping_a_model_via_diff(before):
+    after = drop_model(before, "customer_totals")
+    assert models(compute_impact(before, diff_projects(before, after))) == {"top_customers"}

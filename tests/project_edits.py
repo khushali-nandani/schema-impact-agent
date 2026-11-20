@@ -4,6 +4,7 @@ Each function returns a new Project and leaves the original untouched.
 """
 
 from dataclasses import replace
+from pathlib import Path
 
 from schema_impact.core.registry import Model, Project
 
@@ -47,4 +48,16 @@ def drop_table(project: Project, table: str) -> Project:
 def change_model_sql(project: Project, model: str, sql: str) -> Project:
     models = dict(project.models)
     models[model] = Model(name=model, sql=sql, path=models[model].path)
+    return replace(project, models=models)
+
+
+def drop_model(project: Project, model: str) -> Project:
+    models = dict(project.models)
+    del models[model]
+    return replace(project, models=models)
+
+
+def add_model(project: Project, model: str, sql: str) -> Project:
+    models = dict(project.models)
+    models[model] = Model(name=model, sql=sql, path=Path(f"{model}.sql"))
     return replace(project, models=models)
