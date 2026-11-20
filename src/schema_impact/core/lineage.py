@@ -86,6 +86,53 @@ def model_outputs(project: Project) -> dict[str, list[str]]:
     return outputs
 
 
+@dataclass(frozen=True)
+class TopSelect:
+    """The final SELECT of a model, split into what it outputs and everything else."""
+
+    names: list[str]  # output columns, in order
+    projections: dict[str, str]  # output column -> its expression, without the alias
+    body: str  # the whole query with the final select list left out
+
+    def __hash__(self) -> int:
+        return hash((tuple(self.names), self.body))
+
+
+def analyse_top_select(sql: str, schema: Schema, dialect: str) -> TopSelect | None:
+    """Split a model's query into its final select list and the rest.
+
+    None when that is not possible: the query does not resolve against the schema (it reads a
+    column that is gone), it is not a plain SELECT, or a `*` cannot be expanded. Callers must
+    then assume that anything may have changed.
+    """
+    try:
+        query = qualify(sqlglot.parse_one(sql, read=dialect), schema=schema, dialect=dialect)
+    except SqlglotError:
+        return None
+    if not isinstance(query, exp.Select) or "*" in query.named_selects:
+        return None
+
+    projections: dict[str, str] = {}
+    for projection in query.expressions:
+        value = projection.this if isinstance(projection, exp.Alias) else projection
+        projections[projection.alias_or_name] = value.sql(dialect=dialect)
+    body = query.copy()
+    body.set("expressions", [exp.Star()])
+    return TopSelect(list(query.named_selects), projections, body.sql(dialect=dialect))
+
+
+def model_top_selects(project: Project) -> dict[str, TopSelect | None]:
+    """analyse_top_select for every model, reading each against the models it reads."""
+    schema = {table: dict(columns) for table, columns in project.schema.items()}
+    result: dict[str, TopSelect | None] = {}
+    for model in _in_dependency_order(project):
+        top = analyse_top_select(model.sql, schema, project.dialect)
+        result[model.name] = top
+        names = top.names if top else output_columns_best_effort(model.sql, schema, project.dialect)
+        schema[model.name] = dict.fromkeys(names or [], UNKNOWN_TYPE)
+    return result
+
+
 def output_columns_best_effort(sql: str, schema: Schema, dialect: str) -> list[str] | None:
     """The output columns of a SELECT, even when it can no longer be fully resolved.
 

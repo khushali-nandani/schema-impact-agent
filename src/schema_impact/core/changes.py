@@ -13,8 +13,11 @@ import sqlglot
 from schema_impact.core.lineage import (
     UNKNOWN_TYPE,
     CircularDependencyError,
+    TopSelect,
     _in_dependency_order,
+    analyse_top_select,
     model_outputs,
+    model_top_selects,
     output_columns_best_effort,
 )
 from schema_impact.core.registry import Model, Project, Schema
@@ -115,22 +118,27 @@ def _model_changes(before: Project, after: Project) -> list[Change]:
         old = _normalized(model.sql, before.dialect)
         new = _normalized(after.models[name].sql, after.dialect)
         if old != new:
-            changes.append(ModelChanged(name))
             edited.append(name)
-    changes.extend(_model_column_changes(before, after, edited))
+    changes.extend(_edited_model_changes(before, after, edited))
     return changes
 
 
-def _model_column_changes(before: Project, after: Project, edited: list[str]) -> list[Change]:
-    """Renamed or dropped output columns of the models whose SQL was edited.
+def _edited_model_changes(before: Project, after: Project, edited: list[str]) -> list[Change]:
+    """What changed in the models whose SQL was edited.
+
+    A renamed or dropped output column is a column change. The model as a whole is reported as
+    changed unless the edit only changed the shape of the output: the rest of the query is the
+    same and the columns that remain are computed the same way. Then the models that read it are
+    only affected through the columns that changed.
 
     Only edited models are looked at: a model that was not edited cannot have changed its own
-    columns, and its SQL may no longer resolve against the new schema. For an edited model the
-    new columns are read from its SQL as well as they can be (see output_columns_best_effort).
+    columns, and its SQL may no longer resolve against the new schema. When the new SQL of an
+    edited model cannot be resolved, anything may have changed, so it is reported as changed.
     """
     if not edited:
         return []
     outputs = model_outputs(before)
+    before_tops = model_top_selects(before)
     # the schema the new SQL is read against: the source tables as they are now, and the output
     # columns of the models, as they were or, once an edited model has been read, as they are now
     schema: Schema = {table: dict(columns) for table, columns in after.schema.items()}
@@ -141,17 +149,36 @@ def _model_column_changes(before: Project, after: Project, edited: list[str]) ->
     for model in _models_in_order(after):
         if model.name not in edited:
             continue
-        new_columns = output_columns_best_effort(model.sql, schema, after.dialect)
-        if new_columns is None:
-            continue
-        schema[model.name] = dict.fromkeys(new_columns, UNKNOWN_TYPE)
-        changes.extend(
-            _schema_changes(
+        top = analyse_top_select(model.sql, schema, after.dialect)
+        new_columns = (
+            top.names if top else output_columns_best_effort(model.sql, schema, after.dialect)
+        )
+
+        column_changes: list[Change] = []
+        if new_columns is not None:
+            schema[model.name] = dict.fromkeys(new_columns, UNKNOWN_TYPE)
+            column_changes = _schema_changes(
                 {model.name: dict.fromkeys(outputs[model.name], UNKNOWN_TYPE)},
                 {model.name: dict.fromkeys(new_columns, UNKNOWN_TYPE)},
             )
-        )
+        if not _only_the_output_shape_changed(before_tops.get(model.name), top, column_changes):
+            changes.append(ModelChanged(model.name))
+        changes.extend(column_changes)
     return changes
+
+
+def _only_the_output_shape_changed(
+    before: TopSelect | None, after: TopSelect | None, column_changes: list[Change]
+) -> bool:
+    """True if the edit left the query alone and only changed which columns it outputs."""
+    if before is None or after is None or before.body != after.body:
+        return False
+    renames = {c.old: c.new for c in column_changes if isinstance(c, ColumnRenamed)}
+    for name, expression in before.projections.items():
+        new_name = renames.get(name, name)
+        if new_name in after.projections and after.projections[new_name] != expression:
+            return False
+    return True
 
 
 def _models_in_order(project: Project) -> list[Model]:

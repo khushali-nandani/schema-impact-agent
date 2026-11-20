@@ -159,8 +159,16 @@ def edit_top(before, projections: str):
 
 
 def test_dropping_an_output_column_and_nothing_else_is_only_a_column_change(before):
-    after = edit_top(before, "name")
-    assert diff_projects(before, after) == [ColumnDropped("top_customers", "total")]
+    after = edit_top(before, "total")
+    assert diff_projects(before, after) == [ColumnDropped("top_customers", "name")]
+
+
+def test_dropping_a_column_the_query_orders_by_is_still_reported_as_a_model_change(before):
+    # ORDER BY total means the output alias while total is selected and the table column once it
+    # is not, so the two queries are not provably the same: be careful and report both
+    changes = diff_projects(before, edit_top(before, "name"))
+    assert ColumnDropped("top_customers", "total") in changes
+    assert ModelChanged("top_customers") in changes
 
 
 def test_adding_an_output_column_is_not_a_change(before):
@@ -201,16 +209,16 @@ def test_a_new_sql_that_no_longer_resolves_is_a_model_change_as_well(before):
 
 
 def test_on_a_real_dbt_model_a_rewritten_select_list_is_only_a_column_change():
-    # the compiled SQL of stg_orders ends in SELECT * FROM "renamed"
+    # the compiled SQL of stg_orders ends in SELECT * FROM renamed
     jaffle = load_dbt_project(Path(__file__).parent / "fixtures" / "jaffle_shop_dbt")
     sql = jaffle.models["stg_orders"].sql
-    assert sql.endswith('SELECT * FROM "renamed"')
+    assert sql.endswith("SELECT * FROM renamed")
     after = change_model_sql(
         jaffle,
         "stg_orders",
         sql.replace(
-            'SELECT * FROM "renamed"',
-            'SELECT order_id, customer_id AS customer_id_v2, order_date, status FROM "renamed"',
+            "SELECT * FROM renamed",
+            "SELECT order_id, customer_id AS customer_id_v2, order_date, status FROM renamed",
         ),
     )
     assert diff_projects(jaffle, after) == [
