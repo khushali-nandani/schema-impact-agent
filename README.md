@@ -14,12 +14,12 @@ See [docs/architecture.md](docs/architecture.md) for the full problem statement 
 
 ## Status
 
-Early development. L0 (column lineage) is done; change detection starts in L1.
+Early development. L0 (column lineage) and L1 (change detection and impact) are done; the LangGraph agent starts in L2.
 
 | Level | Scope | Status |
 |---|---|---|
 | L0 | Column-level lineage from SQL (incl. JOIN/WHERE/GROUP BY/HAVING/ORDER BY) | Done |
-| L1 | Change detection and impact analysis | Planned |
+| L1 | Change detection and impact analysis | Done |
 | L2 | LangGraph agent with human approval | Planned |
 | L3 | Benchmark on jaffle_shop with mutation testing | Planned |
 | L4 | Adapters: SQL folder, dbt manifest, dialects | Planned |

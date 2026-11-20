@@ -132,5 +132,25 @@ Window `PARTITION BY` / `ORDER BY` columns are `select` edges to the window's ou
 ### Known lineage limits
 
 - Clause edges for a column that comes from a CTE or subquery *output* (rather than a real table) are not traced back to the underlying table yet.
-- A model that reads another model (model-to-model chains) is not resolved yet; sources must be tables from the schema.
+- Output columns of a model have no known type (`UNKNOWN`); lineage only needs their names.
 - `UNION` queries and dialect-specific syntax have no dedicated tests yet.
+- Circular models raise `CircularDependencyError`.
+
+### Change detection and impact (implemented in L1)
+
+`diff_projects(before, after)` lists the changes: `ColumnRenamed`, `ColumnDropped`, `ColumnTypeChanged`, `TableDropped`, `ModelChanged`. `compute_impact(before, changes)` walks the lineage graph from the changed columns and returns the affected models and columns, following chains of models (`orders.amount -> customer_totals.total -> top_customers.total`). Each `Impact` records the roles (select, join, where, ...), the path, and an effect:
+
+| Change | Effect |
+|---|---|
+| rename, drop, dropped table | `breaking` |
+| type change, changed model logic | `needs_review` |
+| nothing in the lineage graph depends on it | no impact, i.e. safe |
+
+The effect is deterministic and passes unchanged to every model further down the chain. `needs_review` is where a later layer (L2) judges how risky the change is.
+
+### Known change-detection limits
+
+- A rename is guessed: one column removed and one added in the same table, at the same position, with the same type.
+- Added columns are ignored (they cannot break anything downstream).
+- A model or table added as a whole is not reported, and a removed *model* is not reported (only dropped tables are), so models that read a deleted model are not flagged yet.
+- Model logic changes are detected after normalising the SQL, but not described (which filter changed is not extracted).
