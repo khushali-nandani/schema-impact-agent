@@ -81,3 +81,36 @@ Keeping `Impact`, `Verdict` and `Project` in the state worked, with three conseq
 ## 20. Approval answers are a boolean; paused reviews live in memory
 
 `Command(resume=True/False)` approves or rejects. A note from the reviewer can be added later (L5). The default checkpointer is in memory, so a paused review survives a restart of the graph object but not of the process; a persistent store (SQLite) comes with the CLI and GitHub Action in L5, where review and resume run in different processes.
+
+## 21. Ground truth comes from running dbt, on the project's own seed data, without `dbt test`
+
+Hand-labelling would be small and subjective. A model that fails or is skipped is `breaking`; one that builds with a different output (rows, or columns by name, type and order, compared in DuckDB) is `silent`; otherwise `safe`. `dbt test` is left out because a failing test is a different question from a pipeline that breaks or numbers that change. The cost: "same output" is only as strong as the seed data, so a change that leaves it unchanged is labelled safe.
+
+## 22. A mutation is a JSON spec applied to a copy, and every edit asserts its text exists
+
+Specs can be saved in the dataset and replayed. A recipe whose text is not there raises instead of being skipped, so the benchmark cannot silently shrink. The mutated model itself is not scored: its output changes by construction.
+
+## 23. The dataset is committed; scoring never runs dbt
+
+Building the ground truth takes about ten minutes and needs dbt, so it is saved with the project after each mutation (compiled SQL and seed columns). dbt, dbt-duckdb and duckdb live in a `bench` dependency group, not installed by default, so CI stays light; tests that run dbt carry a `bench` marker and are deselected by default. Plain `uv sync` removes the bench packages.
+
+## 24. A breaking impact takes the whole model down
+
+If a model's query fails, dbt skips every model that reads it, whichever of its columns it uses. Following only the columns readers use missed 14 breaking models. A change that only needs review still follows the columns, since there the queries still run.
+
+## 25. Compare a model's own output columns, and report "model changed" only when more than the output shape changed
+
+A renamed or dropped output column of an edited model is a column change, so readers of that column are breaking. If the rest of the query is identical (after `qualify()`) and the remaining columns are computed the same way, the edit is not also a model change, so readers of other columns are not flagged. Whenever this cannot be shown (the new SQL no longer resolves, a `*` cannot be expanded, ORDER BY changes meaning) the model is reported as changed: a false alarm costs less than a silent miss.
+
+## 26. Trace clause columns through CTEs
+
+dbt models are chains of CTEs, so most JOIN / WHERE / GROUP BY columns belong to a CTE. They are followed to the table columns they are made from. This was found only by an interaction: making the diff precise (decision 25) removed a coarse model-level flag that had been hiding the missing edges.
+
+## 27. The LLM judge is not tuned on the benchmark
+
+The 7B model judged every impact high, so it added nothing. Rewriting the prompt until it scores well on the same 34 pairs it is scored on would measure the prompt's fit to the benchmark, not the judge, so it was not done. The result is reported as it is, with its limits (one model, one prompt, 7 safe pairs).
+
+## 28. The reported numbers are not a held-out estimate
+
+The fixes of decisions 24 to 26 were found by reading the errors of this very dataset. The results table says so, and it keeps every intermediate row so the effect of each fix can be seen.
+
