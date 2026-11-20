@@ -11,6 +11,10 @@ Effects (deterministic, no LLM):
 
 A change with no impacts is safe. The effect of a change is passed on unchanged to every
 model further down the chain.
+
+A breaking change makes the query of an affected model fail, so that model cannot be built and
+every model that reads it is affected too, whichever of its columns they use. A change that only
+needs review follows the columns: only what is computed from the changed column is affected.
 """
 
 from collections import deque
@@ -97,6 +101,7 @@ def _follow(
     model_columns: dict[str, list[str]],
 ) -> list[Impact]:
     """Walk the lineage graph breadth first from the changed columns."""
+    effect = _effect_of(change)
     found: dict[tuple[str, str | None], tuple[set[str], tuple[ColumnRef, ...]]] = {}
     visited = set(seeds)
     queue = deque((seed, (seed,)) for seed in seeds)
@@ -110,9 +115,12 @@ def _follow(
                 found[key] = (set(), (*path, target))
             found[key][0].add(edge.kind)
 
-            # A model-level target (column None) means the whole model is affected, so
-            # every column of that model carries the effect on to whoever reads it.
-            if target.column is None:
+            # The whole model carries the effect on, so every one of its columns does, when
+            # - the target is model-level (column None): a join, filter or group by changed, or
+            # - the change is breaking: the model's query cannot run at all, so every model that
+            #   reads it is skipped, whichever of its columns it uses.
+            # A change that only needs review (a type change) follows just the column.
+            if target.column is None or effect == BREAKING:
                 onward = [ColumnRef(target.table, c) for c in model_columns.get(target.table, [])]
             else:
                 onward = [target]
@@ -121,7 +129,6 @@ def _follow(
                     visited.add(ref)
                     queue.append((ref, (*path, target)))
 
-    effect = _effect_of(change)
     return [
         Impact(change, model, column, frozenset(roles), effect, path)
         for (model, column), (roles, path) in sorted(
