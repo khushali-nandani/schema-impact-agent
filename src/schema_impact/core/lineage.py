@@ -10,6 +10,7 @@ Edge kinds:
 """
 
 from dataclasses import dataclass
+from graphlib import CycleError, TopologicalSorter
 
 import sqlglot
 from sqlglot import exp
@@ -17,7 +18,7 @@ from sqlglot.lineage import Node, lineage
 from sqlglot.optimizer.qualify import qualify
 from sqlglot.optimizer.scope import traverse_scope
 
-from schema_impact.core.registry import Model, Project
+from schema_impact.core.registry import Model, Project, Schema
 
 SELECT = "select"
 JOIN = "join"
@@ -47,31 +48,67 @@ class Edge:
     kind: str
 
 
+class CircularDependencyError(ValueError):
+    """Raised when models read each other in a cycle (a reads b, b reads a)."""
+
+
+# Output columns of a model have no known type yet; lineage only needs the column names.
+UNKNOWN_TYPE = "UNKNOWN"
+
+
 def build_lineage(project: Project) -> list[Edge]:
-    """Return every lineage edge for every model in the project."""
+    """Return every lineage edge for every model in the project.
+
+    Models are processed in dependency order. Once a model is done, its output columns are
+    added to the schema as if it were a table, so models that read it can be resolved.
+    """
+    schema = {table: dict(columns) for table, columns in project.schema.items()}
     edges: list[Edge] = []
-    for model in project.models.values():
-        edges.extend(_select_edges(model, project))
-        edges.extend(_clause_edges(model, project))
+
+    for model in _in_dependency_order(project):
+        query = _qualified(model, schema, project.dialect)
+        edges.extend(_select_edges(model, query, schema, project.dialect))
+        edges.extend(_clause_edges(model, query))
+        schema[model.name] = dict.fromkeys(query.named_selects, UNKNOWN_TYPE)
+
     return edges
 
 
-def _qualified(model: Model, project: Project) -> exp.Expression:
-    """Parse a model and qualify it: every column gets its table alias, `*` is expanded."""
+def _in_dependency_order(project: Project) -> list[Model]:
+    """Models sorted so that every model comes after the models it reads."""
+    dependencies = {
+        name: _models_read_by(model, project) for name, model in sorted(project.models.items())
+    }
+    try:
+        order = TopologicalSorter(dependencies).static_order()
+        return [project.models[name] for name in order]
+    except CycleError as error:
+        cycle = " -> ".join(error.args[1])
+        raise CircularDependencyError(f"Models read each other in a cycle: {cycle}") from error
+
+
+def _models_read_by(model: Model, project: Project) -> set[str]:
+    """Names of other models that this model reads in a FROM or JOIN."""
     parsed = sqlglot.parse_one(model.sql, read=project.dialect)
-    return qualify(parsed, schema=project.schema, dialect=project.dialect)
+    tables = {table.name for table in parsed.find_all(exp.Table)}
+    return tables & set(project.models)
 
 
-def _select_edges(model: Model, project: Project) -> list[Edge]:
+def _qualified(model: Model, schema: Schema, dialect: str) -> exp.Expression:
+    """Parse a model and qualify it: every column gets its table alias, `*` is expanded."""
+    parsed = sqlglot.parse_one(model.sql, read=dialect)
+    return qualify(parsed, schema=schema, dialect=dialect)
+
+
+def _select_edges(model: Model, query: exp.Expression, schema: Schema, dialect: str) -> list[Edge]:
     """One edge per (source column, output column) pair of a model's SELECT."""
-    query = _qualified(model, project)
     edges: dict[Edge, None] = {}  # dict keeps order and drops duplicates
 
     for output_column in query.named_selects:
-        root = lineage(output_column, query, schema=project.schema, dialect=project.dialect)
+        root = lineage(output_column, query, schema=schema, dialect=dialect)
         target = ColumnRef(model.name, output_column)
         for leaf in _leaves(root):
-            source = _source_column(leaf, project.dialect)
+            source = _source_column(leaf, dialect)
             if source is not None:
                 edges[Edge(source=source, target=target, kind=SELECT)] = None
 
@@ -88,8 +125,8 @@ _CLAUSE_KINDS: dict[type[exp.Expression], str] = {
 }
 
 
-def _clause_edges(model: Model, project: Project) -> list[Edge]:
-    """Edges from columns used in JOIN, WHERE and GROUP BY to the whole model.
+def _clause_edges(model: Model, query: exp.Expression) -> list[Edge]:
+    """Edges from columns used in JOIN, WHERE, GROUP BY, HAVING and ORDER BY to the model.
 
     These columns never reach an output column, yet changing them changes the model.
     Every SELECT in the query (the main one, CTEs, subqueries) is handled in its own scope,
@@ -98,7 +135,6 @@ def _clause_edges(model: Model, project: Project) -> list[Edge]:
     Known limit: a column that comes from a CTE or subquery output (not a real table) is
     skipped, because it is not traced back to the underlying table.
     """
-    query = _qualified(model, project)
     target = ColumnRef(model.name, None)
     edges: dict[Edge, None] = {}
 
@@ -117,6 +153,24 @@ def _clause_edges(model: Model, project: Project) -> list[Edge]:
             if kind is not None and table is not None:
                 source = ColumnRef(table, column.name)
                 edges[Edge(source=source, target=target, kind=kind)] = None
+
+        # GROUP BY / HAVING / ORDER BY may name an output alias (ORDER BY total). Such a
+        # reference has no table, so follow it back to the expression that defines it.
+        projections = {p.alias_or_name: p for p in select.selects}
+        for key in ("group", "having", "order"):
+            clause = select.args.get(key)
+            if clause is None:
+                continue
+            kind = _CLAUSE_KINDS[type(clause)]
+            for ref in clause.find_all(exp.Column):
+                projection = projections.get(ref.name)
+                if ref.table or projection is None:
+                    continue
+                for inner in projection.find_all(exp.Column):
+                    table = real_tables.get(inner.table)
+                    if table is not None:
+                        source = ColumnRef(table, inner.name)
+                        edges[Edge(source=source, target=target, kind=kind)] = None
 
     return list(edges)
 

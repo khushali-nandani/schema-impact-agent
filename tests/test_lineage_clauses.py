@@ -48,7 +48,7 @@ def test_clause_edges_point_to_the_whole_model(clause_edges):
 
 def test_aliases_are_resolved_in_clauses(clause_edges):
     source_tables = {e.source.table for e in clause_edges}
-    assert source_tables <= {"customers", "products", "orders", "order_items"}
+    assert source_tables <= {"customers", "products", "orders", "order_items", "customer_totals"}
 
 
 def test_one_column_can_have_several_roles(edges):
