@@ -1,0 +1,1227 @@
+{
+ "meta": {
+  "judge_model": "qwen2.5-coder:7b",
+  "generated": "2026-11-20",
+  "items": 93
+ },
+ "items": [
+  {
+   "key": "seed_change_type:raw_customers.id|customers|None|join|Type of raw_customers.id changed from INTEGER to VARCHAR",
+   "case_id": "seed_change_type:raw_customers.id",
+   "model": "customers",
+   "column": null,
+   "roles": [
+    "join"
+   ],
+   "change": "Type of raw_customers.id changed from INTEGER to VARCHAR",
+   "risk": "high",
+   "explanation": "The change from INTEGER to VARCHAR for raw_customers.id could lead to silent errors in the join operation, as string comparisons may not behave as expected compared to numeric comparisons.",
+   "fix": "Ensure that all references to customer_id are consistently treated as strings throughout the pipeline."
+  },
+  {
+   "key": "seed_change_type:raw_customers.id|customers|customer_id|select|Type of raw_customers.id changed from INTEGER to VARCHAR",
+   "case_id": "seed_change_type:raw_customers.id",
+   "model": "customers",
+   "column": "customer_id",
+   "roles": [
+    "select"
+   ],
+   "change": "Type of raw_customers.id changed from INTEGER to VARCHAR",
+   "risk": "high",
+   "explanation": "The change from INTEGER to VARCHAR for raw_customers.id could lead to silent errors if the data contains non-numeric characters, as it will no longer be treated as a valid integer in subsequent calculations.",
+   "fix": "Ensure that all values in raw_customers.id are numeric before the transformation or handle non-numeric values appropriately."
+  },
+  {
+   "key": "seed_change_type:raw_customers.id|stg_customers|customer_id|select|Type of raw_customers.id changed from INTEGER to VARCHAR",
+   "case_id": "seed_change_type:raw_customers.id",
+   "model": "stg_customers",
+   "column": "customer_id",
+   "roles": [
+    "select"
+   ],
+   "change": "Type of raw_customers.id changed from INTEGER to VARCHAR",
+   "risk": "high",
+   "explanation": "The change from INTEGER to VARCHAR for raw_customers.id could lead to silent errors if the data contains non-numeric characters, as these would not be valid in a VARCHAR column.",
+   "fix": "Ensure that all values in raw_customers.id are numeric before the transformation or use a function like CAST to convert them to VARCHAR safely."
+  },
+  {
+   "key": "seed_change_type:raw_orders.id|customers|None|join|Type of raw_orders.id changed from INTEGER to VARCHAR",
+   "case_id": "seed_change_type:raw_orders.id",
+   "model": "customers",
+   "column": null,
+   "roles": [
+    "join"
+   ],
+   "change": "Type of raw_orders.id changed from INTEGER to VARCHAR",
+   "risk": "high",
+   "explanation": "The change from INTEGER to VARCHAR for raw_orders.id could lead to silent errors in the join operation, as it may not correctly match records between tables due to type mismatches.",
+   "fix": "Ensure that all references to raw_orders.id are updated to use VARCHAR type consistently across the data pipeline."
+  },
+  {
+   "key": "seed_change_type:raw_orders.id|customers|number_of_orders|select|Type of raw_orders.id changed from INTEGER to VARCHAR",
+   "case_id": "seed_change_type:raw_orders.id",
+   "model": "customers",
+   "column": "number_of_orders",
+   "roles": [
+    "select"
+   ],
+   "change": "Type of raw_orders.id changed from INTEGER to VARCHAR",
+   "risk": "high",
+   "explanation": "Changing the type of raw_orders.id from INTEGER to VARCHAR could lead to silent errors if there are any non-numeric values in the column, as this would cause issues when counting orders.",
+   "fix": "Ensure that all values in raw_orders.id are numeric before changing its data type."
+  },
+  {
+   "key": "seed_change_type:raw_orders.id|orders|None|join|Type of raw_orders.id changed from INTEGER to VARCHAR",
+   "case_id": "seed_change_type:raw_orders.id",
+   "model": "orders",
+   "column": null,
+   "roles": [
+    "join"
+   ],
+   "change": "Type of raw_orders.id changed from INTEGER to VARCHAR",
+   "risk": "high",
+   "explanation": "Changing the type of raw_orders.id from INTEGER to VARCHAR could lead to silent errors in joins, as string comparisons are not equivalent to numeric comparisons. This could result in orders being incorrectly matched or excluded.",
+   "fix": "Ensure that all references to raw_orders.id and stg_orders.order_id remain consistent with their original data types (INTEGER) throughout the pipeline."
+  },
+  {
+   "key": "seed_change_type:raw_orders.id|orders|order_id|select|Type of raw_orders.id changed from INTEGER to VARCHAR",
+   "case_id": "seed_change_type:raw_orders.id",
+   "model": "orders",
+   "column": "order_id",
+   "roles": [
+    "select"
+   ],
+   "change": "Type of raw_orders.id changed from INTEGER to VARCHAR",
+   "risk": "high",
+   "explanation": "Changing the type of raw_orders.id from INTEGER to VARCHAR could lead to silent errors if there are any non-numeric values in the column, as this would cause issues when performing arithmetic operations or comparisons.",
+   "fix": "Ensure that all values in raw_orders.id are numeric before changing its data type."
+  },
+  {
+   "key": "seed_change_type:raw_orders.id|stg_orders|order_id|select|Type of raw_orders.id changed from INTEGER to VARCHAR",
+   "case_id": "seed_change_type:raw_orders.id",
+   "model": "stg_orders",
+   "column": "order_id",
+   "roles": [
+    "select"
+   ],
+   "change": "Type of raw_orders.id changed from INTEGER to VARCHAR",
+   "risk": "high",
+   "explanation": "The change from INTEGER to VARCHAR for raw_orders.id could lead to silent errors if the data contains non-numeric characters, as these would not be valid integers and could cause issues in calculations or comparisons.",
+   "fix": "Ensure that all values in raw_orders.id are numeric before changing its type. Alternatively, consider using a more robust data type like VARCHAR with validation constraints."
+  },
+  {
+   "key": "seed_change_type:raw_orders.user_id|customers|None|group_by,join|Type of raw_orders.user_id changed from INTEGER to VARCHAR",
+   "case_id": "seed_change_type:raw_orders.user_id",
+   "model": "customers",
+   "column": null,
+   "roles": [
+    "group_by",
+    "join"
+   ],
+   "change": "Type of raw_orders.user_id changed from INTEGER to VARCHAR",
+   "risk": "high",
+   "explanation": "Changing the data type of user_id from INTEGER to VARCHAR could lead to silent errors in joins and groupings, as string comparisons may not behave as expected compared to numeric comparisons.",
+   "fix": "Ensure that all references to user_id are updated to handle string comparisons appropriately."
+  },
+  {
+   "key": "seed_change_type:raw_orders.user_id|orders|customer_id|select|Type of raw_orders.user_id changed from INTEGER to VARCHAR",
+   "case_id": "seed_change_type:raw_orders.user_id",
+   "model": "orders",
+   "column": "customer_id",
+   "roles": [
+    "select"
+   ],
+   "change": "Type of raw_orders.user_id changed from INTEGER to VARCHAR",
+   "risk": "high",
+   "explanation": "The change from INTEGER to VARCHAR for user_id in raw_orders could lead to silent errors if the data contains non-numeric characters, as these would not be valid integers and could cause issues when joining with other tables.",
+   "fix": "Ensure that all values in user_id are numeric before performing the join operation."
+  },
+  {
+   "key": "seed_change_type:raw_orders.user_id|stg_orders|customer_id|select|Type of raw_orders.user_id changed from INTEGER to VARCHAR",
+   "case_id": "seed_change_type:raw_orders.user_id",
+   "model": "stg_orders",
+   "column": "customer_id",
+   "roles": [
+    "select"
+   ],
+   "change": "Type of raw_orders.user_id changed from INTEGER to VARCHAR",
+   "risk": "high",
+   "explanation": "The change from INTEGER to VARCHAR for user_id in raw_orders could lead to silent errors if the data contains non-numeric characters, as these would not be valid for an INTEGER type. This could result in incorrect or misleading data being processed in stg_orders.",
+   "fix": "Ensure that all values in user_id are numeric before casting it to VARCHAR."
+  },
+  {
+   "key": "seed_change_type:raw_orders.order_date|customers|first_order|select|Type of raw_orders.order_date changed from DATE to VARCHAR",
+   "case_id": "seed_change_type:raw_orders.order_date",
+   "model": "customers",
+   "column": "first_order",
+   "roles": [
+    "select"
+   ],
+   "change": "Type of raw_orders.order_date changed from DATE to VARCHAR",
+   "risk": "high",
+   "explanation": "Changing the data type of raw_orders.order_date from DATE to VARCHAR could lead to incorrect sorting and filtering operations, as string comparisons are not equivalent to date comparisons. This might result in customers being incorrectly identified with their first order dates.",
+   "fix": "Revert the change to raw_orders.order_date or update the SQL logic to handle string representations of dates appropriately."
+  },
+  {
+   "key": "seed_change_type:raw_orders.order_date|customers|most_recent_order|select|Type of raw_orders.order_date changed from DATE to VARCHAR",
+   "case_id": "seed_change_type:raw_orders.order_date",
+   "model": "customers",
+   "column": "most_recent_order",
+   "roles": [
+    "select"
+   ],
+   "change": "Type of raw_orders.order_date changed from DATE to VARCHAR",
+   "risk": "high",
+   "explanation": "Changing the data type of raw_orders.order_date from DATE to VARCHAR could lead to incorrect sorting and comparison operations, potentially resulting in wrong or misleading values for customers.most_recent_order.",
+   "fix": "Revert the change to raw_orders.order_date to DATE or ensure that all subsequent operations handle VARCHAR dates appropriately."
+  },
+  {
+   "key": "seed_change_type:raw_orders.order_date|orders|order_date|select|Type of raw_orders.order_date changed from DATE to VARCHAR",
+   "case_id": "seed_change_type:raw_orders.order_date",
+   "model": "orders",
+   "column": "order_date",
+   "roles": [
+    "select"
+   ],
+   "change": "Type of raw_orders.order_date changed from DATE to VARCHAR",
+   "risk": "high",
+   "explanation": "Changing the data type of raw_orders.order_date from DATE to VARCHAR could lead to incorrect sorting and filtering operations in the SQL pipeline, as string comparisons are not equivalent to date comparisons.",
+   "fix": "Revert the change to raw_orders.order_date or ensure that all subsequent operations treat it as a date."
+  },
+  {
+   "key": "seed_change_type:raw_orders.order_date|stg_orders|order_date|select|Type of raw_orders.order_date changed from DATE to VARCHAR",
+   "case_id": "seed_change_type:raw_orders.order_date",
+   "model": "stg_orders",
+   "column": "order_date",
+   "roles": [
+    "select"
+   ],
+   "change": "Type of raw_orders.order_date changed from DATE to VARCHAR",
+   "risk": "high",
+   "explanation": "Changing the data type of order_date from DATE to VARCHAR could lead to incorrect date comparisons and sorting in the stg_orders table, as string operations are not equivalent to date operations.",
+   "fix": "Revert the change to the raw_orders.order_date column or convert it back to a DATE type before using it in stg_orders."
+  },
+  {
+   "key": "seed_change_type:raw_payments.id|stg_payments|payment_id|select|Type of raw_payments.id changed from INTEGER to VARCHAR",
+   "case_id": "seed_change_type:raw_payments.id",
+   "model": "stg_payments",
+   "column": "payment_id",
+   "roles": [
+    "select"
+   ],
+   "change": "Type of raw_payments.id changed from INTEGER to VARCHAR",
+   "risk": "high",
+   "explanation": "Changing the type of raw_payments.id from INTEGER to VARCHAR could lead to data inconsistencies if there are non-numeric values in the column, causing errors or incorrect calculations.",
+   "fix": "Ensure that all values in raw_payments.id are numeric before changing its type. Alternatively, consider using a more appropriate data type that can handle both integer and string values."
+  },
+  {
+   "key": "seed_change_type:raw_payments.order_id|customers|None|join|Type of raw_payments.order_id changed from INTEGER to VARCHAR",
+   "case_id": "seed_change_type:raw_payments.order_id",
+   "model": "customers",
+   "column": null,
+   "roles": [
+    "join"
+   ],
+   "change": "Type of raw_payments.order_id changed from INTEGER to VARCHAR",
+   "risk": "high",
+   "explanation": "The change from INTEGER to VARCHAR for raw_payments.order_id could lead to silent errors in the join operation, as it may not correctly match string representations of integers.",
+   "fix": "Ensure that all references to order_id are consistently treated as strings throughout the pipeline."
+  },
+  {
+   "key": "seed_change_type:raw_payments.order_id|orders|None|group_by,join|Type of raw_payments.order_id changed from INTEGER to VARCHAR",
+   "case_id": "seed_change_type:raw_payments.order_id",
+   "model": "orders",
+   "column": null,
+   "roles": [
+    "group_by",
+    "join"
+   ],
+   "change": "Type of raw_payments.order_id changed from INTEGER to VARCHAR",
+   "risk": "high",
+   "explanation": "Changing the type of raw_payments.order_id from INTEGER to VARCHAR could lead to silent errors in the SQL pipeline, as it may cause issues with comparisons and joins that rely on numeric values.",
+   "fix": "Ensure that all subsequent operations that depend on order_id are compatible with VARCHAR data type."
+  },
+  {
+   "key": "seed_change_type:raw_payments.order_id|stg_payments|order_id|select|Type of raw_payments.order_id changed from INTEGER to VARCHAR",
+   "case_id": "seed_change_type:raw_payments.order_id",
+   "model": "stg_payments",
+   "column": "order_id",
+   "roles": [
+    "select"
+   ],
+   "change": "Type of raw_payments.order_id changed from INTEGER to VARCHAR",
+   "risk": "high",
+   "explanation": "Changing the type of `order_id` from INTEGER to VARCHAR in `raw_payments` could lead to data inconsistencies if there are existing order IDs that cannot be converted to strings, potentially causing errors or misleading results when selecting from `stg_payments`.",
+   "fix": "Ensure all existing `order_id` values can be safely converted to VARCHAR before making the change."
+  },
+  {
+   "key": "seed_change_type:raw_payments.amount|customers|customer_lifetime_value|select|Type of raw_payments.amount changed from INTEGER to VARCHAR",
+   "case_id": "seed_change_type:raw_payments.amount",
+   "model": "customers",
+   "column": "customer_lifetime_value",
+   "roles": [
+    "select"
+   ],
+   "change": "Type of raw_payments.amount changed from INTEGER to VARCHAR",
+   "risk": "high",
+   "explanation": "The change from INTEGER to VARCHAR for raw_payments.amount could lead to data type mismatches and incorrect calculations in the customer_lifetime_value, as it may now contain non-numeric characters.",
+   "fix": "Ensure that the amount column is consistently numeric before performing any calculations or aggregations."
+  },
+  {
+   "key": "seed_change_type:raw_payments.amount|orders|amount|select|Type of raw_payments.amount changed from INTEGER to VARCHAR",
+   "case_id": "seed_change_type:raw_payments.amount",
+   "model": "orders",
+   "column": "amount",
+   "roles": [
+    "select"
+   ],
+   "change": "Type of raw_payments.amount changed from INTEGER to VARCHAR",
+   "risk": "high",
+   "explanation": "Changing the type of raw_payments.amount from INTEGER to VARCHAR could lead to silent errors if non-numeric values are inserted, causing SUM and other aggregate functions to return incorrect results.",
+   "fix": "Ensure that raw_payments.amount only contains numeric values before it is cast to VARCHAR."
+  },
+  {
+   "key": "seed_change_type:raw_payments.amount|orders|bank_transfer_amount|select|Type of raw_payments.amount changed from INTEGER to VARCHAR",
+   "case_id": "seed_change_type:raw_payments.amount",
+   "model": "orders",
+   "column": "bank_transfer_amount",
+   "roles": [
+    "select"
+   ],
+   "change": "Type of raw_payments.amount changed from INTEGER to VARCHAR",
+   "risk": "high",
+   "explanation": "Changing the type of raw_payments.amount from INTEGER to VARCHAR could lead to silent errors if non-numeric values are inserted, causing incorrect calculations in orders.bank_transfer_amount.",
+   "fix": "Ensure that raw_payments.amount only contains numeric values before the transformation."
+  },
+  {
+   "key": "seed_change_type:raw_payments.amount|orders|coupon_amount|select|Type of raw_payments.amount changed from INTEGER to VARCHAR",
+   "case_id": "seed_change_type:raw_payments.amount",
+   "model": "orders",
+   "column": "coupon_amount",
+   "roles": [
+    "select"
+   ],
+   "change": "Type of raw_payments.amount changed from INTEGER to VARCHAR",
+   "risk": "high",
+   "explanation": "Changing the type of raw_payments.amount from INTEGER to VARCHAR could lead to silent errors if non-numeric values are inserted, causing incorrect calculations in orders.coupon_amount.",
+   "fix": "Ensure that raw_payments.amount only contains numeric values before the transformation."
+  },
+  {
+   "key": "seed_change_type:raw_payments.amount|orders|credit_card_amount|select|Type of raw_payments.amount changed from INTEGER to VARCHAR",
+   "case_id": "seed_change_type:raw_payments.amount",
+   "model": "orders",
+   "column": "credit_card_amount",
+   "roles": [
+    "select"
+   ],
+   "change": "Type of raw_payments.amount changed from INTEGER to VARCHAR",
+   "risk": "high",
+   "explanation": "The change from INTEGER to VARCHAR for raw_payments.amount could lead to silent errors if the data contains non-numeric characters, causing SUM and other aggregate functions to return incorrect results.",
+   "fix": "Ensure that raw_payments.amount only contains numeric values before performing any calculations."
+  },
+  {
+   "key": "seed_change_type:raw_payments.amount|orders|gift_card_amount|select|Type of raw_payments.amount changed from INTEGER to VARCHAR",
+   "case_id": "seed_change_type:raw_payments.amount",
+   "model": "orders",
+   "column": "gift_card_amount",
+   "roles": [
+    "select"
+   ],
+   "change": "Type of raw_payments.amount changed from INTEGER to VARCHAR",
+   "risk": "high",
+   "explanation": "Changing the type of raw_payments.amount from INTEGER to VARCHAR could lead to silent errors if non-numeric values are inserted, causing incorrect calculations in gift_card_amount.",
+   "fix": "Ensure that raw_payments.amount only contains numeric values before the transformation."
+  },
+  {
+   "key": "seed_change_type:raw_payments.amount|stg_payments|amount|select|Type of raw_payments.amount changed from INTEGER to VARCHAR",
+   "case_id": "seed_change_type:raw_payments.amount",
+   "model": "stg_payments",
+   "column": "amount",
+   "roles": [
+    "select"
+   ],
+   "change": "Type of raw_payments.amount changed from INTEGER to VARCHAR",
+   "risk": "high",
+   "explanation": "Changing the data type of `amount` from INTEGER to VARCHAR will cause arithmetic operations to fail, as SQL cannot perform division on strings. This will result in incorrect calculations and potentially misleading data.",
+   "fix": "Revert the change to the data type of `amount` in `raw_payments` back to INTEGER."
+  },
+  {
+   "key": "model_logic:stg_customers.keep_first_fifty|customers|None|join|The SQL of model stg_customers changed",
+   "case_id": "model_logic:stg_customers.keep_first_fifty",
+   "model": "customers",
+   "column": null,
+   "roles": [
+    "join"
+   ],
+   "change": "The SQL of model stg_customers changed",
+   "risk": "high",
+   "explanation": "The change in the SQL of model stg_customers could affect the join operation with customers, potentially leading to incorrect or misleading results if the customer_id values have changed or are no longer consistent.",
+   "fix": "Review and ensure that the customer_id values in stg_customers remain consistent and correctly map to those in customers."
+  },
+  {
+   "key": "model_logic:stg_customers.keep_first_fifty|customers|customer_id|select|The SQL of model stg_customers changed",
+   "case_id": "model_logic:stg_customers.keep_first_fifty",
+   "model": "customers",
+   "column": "customer_id",
+   "roles": [
+    "select"
+   ],
+   "change": "The SQL of model stg_customers changed",
+   "risk": "high",
+   "explanation": "The change in the SQL of model stg_customers could affect the customer_id values, which are used to join with other tables and calculate metrics like first_order, most_recent_order, number_of_orders, and total_amount. This could lead to incorrect or misleading results if the customer_id values have changed.",
+   "fix": "Review the changes made to stg_customers to ensure that customer_id remains consistent and does not change unexpectedly."
+  },
+  {
+   "key": "model_logic:stg_customers.keep_first_fifty|customers|first_name|select|The SQL of model stg_customers changed",
+   "case_id": "model_logic:stg_customers.keep_first_fifty",
+   "model": "customers",
+   "column": "first_name",
+   "roles": [
+    "select"
+   ],
+   "change": "The SQL of model stg_customers changed",
+   "risk": "high",
+   "explanation": "The change in the SQL of model stg_customers could affect the values of customers.first_name, which is used in the final SELECT statement. If the new SQL introduces errors or changes the data, it could lead to incorrect or misleading results.",
+   "fix": "Review the updated SQL for stg_customers and ensure that it does not alter the integrity or accuracy of the first_name column before proceeding with further analysis."
+  },
+  {
+   "key": "model_logic:stg_customers.keep_first_fifty|customers|last_name|select|The SQL of model stg_customers changed",
+   "case_id": "model_logic:stg_customers.keep_first_fifty",
+   "model": "customers",
+   "column": "last_name",
+   "roles": [
+    "select"
+   ],
+   "change": "The SQL of model stg_customers changed",
+   "risk": "high",
+   "explanation": "The change in the SQL of model stg_customers could affect the values of customers.last_name, which is used in the final SELECT statement. If the new SQL logic for stg_customers alters the data in a way that impacts last_name, it could lead to incorrect or misleading results in the final output.",
+   "fix": "Review the changes made to stg_customers and ensure they do not affect the integrity of customers.last_name before proceeding with deployment."
+  },
+  {
+   "key": "model_logic:stg_customers.upper_first_name|customers|None|join|The SQL of model stg_customers changed",
+   "case_id": "model_logic:stg_customers.upper_first_name",
+   "model": "customers",
+   "column": null,
+   "roles": [
+    "join"
+   ],
+   "change": "The SQL of model stg_customers changed",
+   "risk": "high",
+   "explanation": "The change in the SQL of model stg_customers could affect the join operation with customers, potentially leading to incorrect or misleading results if the customer_id values have changed or are no longer consistent.",
+   "fix": "Review and ensure that the customer_id values in stg_customers remain consistent and correctly map to those in customers."
+  },
+  {
+   "key": "model_logic:stg_customers.upper_first_name|customers|customer_id|select|The SQL of model stg_customers changed",
+   "case_id": "model_logic:stg_customers.upper_first_name",
+   "model": "customers",
+   "column": "customer_id",
+   "roles": [
+    "select"
+   ],
+   "change": "The SQL of model stg_customers changed",
+   "risk": "high",
+   "explanation": "The change in the SQL of model stg_customers could affect the customer_id values, which are used to join with other tables and calculate metrics like first_order, most_recent_order, number_of_orders, and total_amount. This could lead to incorrect or misleading results if the customer_id values have changed.",
+   "fix": "Review the changes made to stg_customers to ensure that customer_id remains consistent and does not change unexpectedly."
+  },
+  {
+   "key": "model_logic:stg_customers.upper_first_name|customers|first_name|select|The SQL of model stg_customers changed",
+   "case_id": "model_logic:stg_customers.upper_first_name",
+   "model": "customers",
+   "column": "first_name",
+   "roles": [
+    "select"
+   ],
+   "change": "The SQL of model stg_customers changed",
+   "risk": "high",
+   "explanation": "The change in the SQL of model stg_customers could affect the values of customers.first_name, which is used in the final SELECT statement. If the new SQL introduces errors or changes the data, it could lead to incorrect or misleading results.",
+   "fix": "Review the updated SQL for stg_customers and ensure that it does not alter the integrity or accuracy of the first_name column before proceeding with further analysis."
+  },
+  {
+   "key": "model_logic:stg_customers.upper_first_name|customers|last_name|select|The SQL of model stg_customers changed",
+   "case_id": "model_logic:stg_customers.upper_first_name",
+   "model": "customers",
+   "column": "last_name",
+   "roles": [
+    "select"
+   ],
+   "change": "The SQL of model stg_customers changed",
+   "risk": "high",
+   "explanation": "The change in the SQL of model stg_customers could affect the values of customers.last_name, which is used in the final SELECT statement. If the new SQL logic for stg_customers alters the data in a way that impacts last_name, it could lead to incorrect or misleading results in the final output.",
+   "fix": "Review the changes made to stg_customers and ensure they do not affect the integrity of customers.last_name before proceeding with deployment."
+  },
+  {
+   "key": "model_logic:stg_orders.drop_returned_orders|customers|None|group_by,join|The SQL of model stg_orders changed",
+   "case_id": "model_logic:stg_orders.drop_returned_orders",
+   "model": "customers",
+   "column": null,
+   "roles": [
+    "group_by",
+    "join"
+   ],
+   "change": "The SQL of model stg_orders changed",
+   "risk": "high",
+   "explanation": "The change in the SQL of model stg_orders could affect the grouping and joining operations in the customers model, potentially leading to incorrect or misleading results.",
+   "fix": "Review the changes in stg_orders to ensure they do not impact the integrity of the group_by and join operations in the customers model."
+  },
+  {
+   "key": "model_logic:stg_orders.drop_returned_orders|customers|first_order|select|The SQL of model stg_orders changed",
+   "case_id": "model_logic:stg_orders.drop_returned_orders",
+   "model": "customers",
+   "column": "first_order",
+   "roles": [
+    "select"
+   ],
+   "change": "The SQL of model stg_orders changed",
+   "risk": "high",
+   "explanation": "The change in the SQL of model stg_orders could affect the calculation of customers.first_order, which is used to determine the earliest order date for each customer. This could lead to incorrect or misleading data if the new SQL does not accurately reflect the original intent.",
+   "fix": "Review and update the SQL of stg_orders to ensure it correctly calculates the first_order for each customer."
+  },
+  {
+   "key": "model_logic:stg_orders.drop_returned_orders|customers|most_recent_order|select|The SQL of model stg_orders changed",
+   "case_id": "model_logic:stg_orders.drop_returned_orders",
+   "model": "customers",
+   "column": "most_recent_order",
+   "roles": [
+    "select"
+   ],
+   "change": "The SQL of model stg_orders changed",
+   "risk": "high",
+   "explanation": "The change in the SQL of model stg_orders could affect the calculation of customers.most_recent_order, which is used to determine the most recent order date for each customer. This could lead to incorrect or misleading results if the new SQL does not accurately reflect the intended logic.",
+   "fix": "Review and update the SQL of model stg_orders to ensure it correctly calculates the most recent order date for each customer."
+  },
+  {
+   "key": "model_logic:stg_orders.drop_returned_orders|customers|number_of_orders|select|The SQL of model stg_orders changed",
+   "case_id": "model_logic:stg_orders.drop_returned_orders",
+   "model": "customers",
+   "column": "number_of_orders",
+   "roles": [
+    "select"
+   ],
+   "change": "The SQL of model stg_orders changed",
+   "risk": "high",
+   "explanation": "The change in the SQL of model stg_orders could affect the count of orders per customer, which is used to calculate number_of_orders. This might lead to incorrect or misleading data if the new SQL does not accurately reflect the order counts.",
+   "fix": "Review and test the updated SQL for stg_orders to ensure it correctly calculates the number of orders per customer."
+  },
+  {
+   "key": "model_logic:stg_orders.drop_returned_orders|orders|None|join|The SQL of model stg_orders changed",
+   "case_id": "model_logic:stg_orders.drop_returned_orders",
+   "model": "orders",
+   "column": null,
+   "roles": [
+    "join"
+   ],
+   "change": "The SQL of model stg_orders changed",
+   "risk": "high",
+   "explanation": "The change in the SQL of model stg_orders could affect the join operation in the orders model, potentially leading to incorrect or misleading results if the order_id values have changed or are no longer unique.",
+   "fix": "Review and ensure that the order_id values in stg_orders remain consistent and unique before proceeding with any changes."
+  },
+  {
+   "key": "model_logic:stg_orders.drop_returned_orders|orders|customer_id|select|The SQL of model stg_orders changed",
+   "case_id": "model_logic:stg_orders.drop_returned_orders",
+   "model": "orders",
+   "column": "customer_id",
+   "roles": [
+    "select"
+   ],
+   "change": "The SQL of model stg_orders changed",
+   "risk": "high",
+   "explanation": "The change in the SQL of model stg_orders could affect the customer_id values, which are used to join with other tables and calculate totals. This could lead to incorrect or misleading data if the customer_id values have changed.",
+   "fix": "Review the changes made to stg_orders to ensure that the customer_id values remain consistent and accurate."
+  },
+  {
+   "key": "model_logic:stg_orders.drop_returned_orders|orders|order_date|select|The SQL of model stg_orders changed",
+   "case_id": "model_logic:stg_orders.drop_returned_orders",
+   "model": "orders",
+   "column": "order_date",
+   "roles": [
+    "select"
+   ],
+   "change": "The SQL of model stg_orders changed",
+   "risk": "high",
+   "explanation": "The change in the SQL of model stg_orders could affect the order_date, which is used to calculate various metrics in the final query. If the new SQL introduces errors or changes the data structure, it could lead to incorrect or misleading results.",
+   "fix": "Review the changes made to stg_orders and ensure that they do not alter the order_date column or its usage in subsequent queries."
+  },
+  {
+   "key": "model_logic:stg_orders.drop_returned_orders|orders|order_id|select|The SQL of model stg_orders changed",
+   "case_id": "model_logic:stg_orders.drop_returned_orders",
+   "model": "orders",
+   "column": "order_id",
+   "roles": [
+    "select"
+   ],
+   "change": "The SQL of model stg_orders changed",
+   "risk": "high",
+   "explanation": "The change in the SQL of model stg_orders could affect the order_id values, which are used to join with other tables and calculate totals. This could lead to incorrect or misleading data if the order_id values have changed.",
+   "fix": "Review the changes made to stg_orders to ensure that the order_id values remain consistent and do not change unexpectedly."
+  },
+  {
+   "key": "model_logic:stg_orders.drop_returned_orders|orders|status|select|The SQL of model stg_orders changed",
+   "case_id": "model_logic:stg_orders.drop_returned_orders",
+   "model": "orders",
+   "column": "status",
+   "roles": [
+    "select"
+   ],
+   "change": "The SQL of model stg_orders changed",
+   "risk": "high",
+   "explanation": "The change in the SQL of model stg_orders could affect the values in orders.status, which is used to filter and display data. If the new SQL logic for stg_orders changes how status is determined, it could lead to incorrect or misleading results in the final output.",
+   "fix": "Review the new SQL logic for stg_orders to ensure that it does not alter the definition of orders.status in a way that affects the integrity of the data pipeline."
+  },
+  {
+   "key": "model_logic:stg_orders.upper_status|customers|None|group_by,join|The SQL of model stg_orders changed",
+   "case_id": "model_logic:stg_orders.upper_status",
+   "model": "customers",
+   "column": null,
+   "roles": [
+    "group_by",
+    "join"
+   ],
+   "change": "The SQL of model stg_orders changed",
+   "risk": "high",
+   "explanation": "The change in the SQL of model stg_orders could affect the grouping and joining operations in the customers model, potentially leading to incorrect or misleading results.",
+   "fix": "Review the changes in stg_orders to ensure they do not impact the integrity of the group_by and join operations in the customers model."
+  },
+  {
+   "key": "model_logic:stg_orders.upper_status|customers|first_order|select|The SQL of model stg_orders changed",
+   "case_id": "model_logic:stg_orders.upper_status",
+   "model": "customers",
+   "column": "first_order",
+   "roles": [
+    "select"
+   ],
+   "change": "The SQL of model stg_orders changed",
+   "risk": "high",
+   "explanation": "The change in the SQL of model stg_orders could affect the calculation of customers.first_order, which is used to determine the earliest order date for each customer. This could lead to incorrect or misleading data if the new SQL does not accurately reflect the original intent.",
+   "fix": "Review and update the SQL of stg_orders to ensure it correctly calculates the first_order for each customer."
+  },
+  {
+   "key": "model_logic:stg_orders.upper_status|customers|most_recent_order|select|The SQL of model stg_orders changed",
+   "case_id": "model_logic:stg_orders.upper_status",
+   "model": "customers",
+   "column": "most_recent_order",
+   "roles": [
+    "select"
+   ],
+   "change": "The SQL of model stg_orders changed",
+   "risk": "high",
+   "explanation": "The change in the SQL of model stg_orders could affect the calculation of customers.most_recent_order, which is used to determine the most recent order date for each customer. This could lead to incorrect or misleading results if the new SQL does not accurately reflect the intended logic.",
+   "fix": "Review and update the SQL of model stg_orders to ensure it correctly calculates the most recent order date for each customer."
+  },
+  {
+   "key": "model_logic:stg_orders.upper_status|customers|number_of_orders|select|The SQL of model stg_orders changed",
+   "case_id": "model_logic:stg_orders.upper_status",
+   "model": "customers",
+   "column": "number_of_orders",
+   "roles": [
+    "select"
+   ],
+   "change": "The SQL of model stg_orders changed",
+   "risk": "high",
+   "explanation": "The change in the SQL of model stg_orders could affect the count of orders per customer, which is used to calculate number_of_orders. This might lead to incorrect or misleading data if the new SQL does not accurately reflect the order counts.",
+   "fix": "Review and test the updated SQL for stg_orders to ensure it correctly calculates the number of orders per customer."
+  },
+  {
+   "key": "model_logic:stg_orders.upper_status|orders|None|join|The SQL of model stg_orders changed",
+   "case_id": "model_logic:stg_orders.upper_status",
+   "model": "orders",
+   "column": null,
+   "roles": [
+    "join"
+   ],
+   "change": "The SQL of model stg_orders changed",
+   "risk": "high",
+   "explanation": "The change in the SQL of model stg_orders could affect the join operation in the orders model, potentially leading to incorrect or misleading results if the order_id values have changed or are no longer unique.",
+   "fix": "Review and ensure that the order_id values in stg_orders remain consistent and unique before proceeding with any changes."
+  },
+  {
+   "key": "model_logic:stg_orders.upper_status|orders|customer_id|select|The SQL of model stg_orders changed",
+   "case_id": "model_logic:stg_orders.upper_status",
+   "model": "orders",
+   "column": "customer_id",
+   "roles": [
+    "select"
+   ],
+   "change": "The SQL of model stg_orders changed",
+   "risk": "high",
+   "explanation": "The change in the SQL of model stg_orders could affect the customer_id values, which are used to join with other tables and calculate totals. This could lead to incorrect or misleading data if the customer_id values have changed.",
+   "fix": "Review the changes made to stg_orders to ensure that the customer_id values remain consistent and accurate."
+  },
+  {
+   "key": "model_logic:stg_orders.upper_status|orders|order_date|select|The SQL of model stg_orders changed",
+   "case_id": "model_logic:stg_orders.upper_status",
+   "model": "orders",
+   "column": "order_date",
+   "roles": [
+    "select"
+   ],
+   "change": "The SQL of model stg_orders changed",
+   "risk": "high",
+   "explanation": "The change in the SQL of model stg_orders could affect the order_date, which is used to calculate various metrics in the final query. If the new SQL introduces errors or changes the data structure, it could lead to incorrect or misleading results.",
+   "fix": "Review the changes made to stg_orders and ensure that they do not alter the order_date column or its usage in subsequent queries."
+  },
+  {
+   "key": "model_logic:stg_orders.upper_status|orders|order_id|select|The SQL of model stg_orders changed",
+   "case_id": "model_logic:stg_orders.upper_status",
+   "model": "orders",
+   "column": "order_id",
+   "roles": [
+    "select"
+   ],
+   "change": "The SQL of model stg_orders changed",
+   "risk": "high",
+   "explanation": "The change in the SQL of model stg_orders could affect the order_id values, which are used to join with other tables and calculate totals. This could lead to incorrect or misleading data if the order_id values have changed.",
+   "fix": "Review the changes made to stg_orders to ensure that the order_id values remain consistent and do not change unexpectedly."
+  },
+  {
+   "key": "model_logic:stg_orders.upper_status|orders|status|select|The SQL of model stg_orders changed",
+   "case_id": "model_logic:stg_orders.upper_status",
+   "model": "orders",
+   "column": "status",
+   "roles": [
+    "select"
+   ],
+   "change": "The SQL of model stg_orders changed",
+   "risk": "high",
+   "explanation": "The change in the SQL of model stg_orders could affect the values in orders.status, which is used to filter and display data. If the new SQL logic for stg_orders changes how status is determined, it could lead to incorrect or misleading results in the final output.",
+   "fix": "Review the new SQL logic for stg_orders to ensure that it does not alter the definition of orders.status in a way that affects the integrity of the data pipeline."
+  },
+  {
+   "key": "model_logic:stg_orders.shift_order_ids|customers|None|group_by,join|The SQL of model stg_orders changed",
+   "case_id": "model_logic:stg_orders.shift_order_ids",
+   "model": "customers",
+   "column": null,
+   "roles": [
+    "group_by",
+    "join"
+   ],
+   "change": "The SQL of model stg_orders changed",
+   "risk": "high",
+   "explanation": "The change in the SQL of model stg_orders could affect the grouping and joining operations in the customers model, potentially leading to incorrect or misleading results.",
+   "fix": "Review the changes in stg_orders to ensure they do not impact the integrity of the group_by and join operations in the customers model."
+  },
+  {
+   "key": "model_logic:stg_orders.shift_order_ids|customers|first_order|select|The SQL of model stg_orders changed",
+   "case_id": "model_logic:stg_orders.shift_order_ids",
+   "model": "customers",
+   "column": "first_order",
+   "roles": [
+    "select"
+   ],
+   "change": "The SQL of model stg_orders changed",
+   "risk": "high",
+   "explanation": "The change in the SQL of model stg_orders could affect the calculation of customers.first_order, which is used to determine the earliest order date for each customer. This could lead to incorrect or misleading data if the new SQL does not accurately reflect the original intent.",
+   "fix": "Review and update the SQL of stg_orders to ensure it correctly calculates the first_order for each customer."
+  },
+  {
+   "key": "model_logic:stg_orders.shift_order_ids|customers|most_recent_order|select|The SQL of model stg_orders changed",
+   "case_id": "model_logic:stg_orders.shift_order_ids",
+   "model": "customers",
+   "column": "most_recent_order",
+   "roles": [
+    "select"
+   ],
+   "change": "The SQL of model stg_orders changed",
+   "risk": "high",
+   "explanation": "The change in the SQL of model stg_orders could affect the calculation of customers.most_recent_order, which is used to determine the most recent order date for each customer. This could lead to incorrect or misleading results if the new SQL does not accurately reflect the intended logic.",
+   "fix": "Review and update the SQL of model stg_orders to ensure it correctly calculates the most recent order date for each customer."
+  },
+  {
+   "key": "model_logic:stg_orders.shift_order_ids|customers|number_of_orders|select|The SQL of model stg_orders changed",
+   "case_id": "model_logic:stg_orders.shift_order_ids",
+   "model": "customers",
+   "column": "number_of_orders",
+   "roles": [
+    "select"
+   ],
+   "change": "The SQL of model stg_orders changed",
+   "risk": "high",
+   "explanation": "The change in the SQL of model stg_orders could affect the count of orders per customer, which is used to calculate number_of_orders. This might lead to incorrect or misleading data if the new SQL does not accurately reflect the order counts.",
+   "fix": "Review and test the updated SQL for stg_orders to ensure it correctly calculates the number of orders per customer."
+  },
+  {
+   "key": "model_logic:stg_orders.shift_order_ids|orders|None|join|The SQL of model stg_orders changed",
+   "case_id": "model_logic:stg_orders.shift_order_ids",
+   "model": "orders",
+   "column": null,
+   "roles": [
+    "join"
+   ],
+   "change": "The SQL of model stg_orders changed",
+   "risk": "high",
+   "explanation": "The change in the SQL of model stg_orders could affect the join operation in the orders model, potentially leading to incorrect or misleading results if the order_id values have changed or are no longer unique.",
+   "fix": "Review and ensure that the order_id values in stg_orders remain consistent and unique before proceeding with any changes."
+  },
+  {
+   "key": "model_logic:stg_orders.shift_order_ids|orders|customer_id|select|The SQL of model stg_orders changed",
+   "case_id": "model_logic:stg_orders.shift_order_ids",
+   "model": "orders",
+   "column": "customer_id",
+   "roles": [
+    "select"
+   ],
+   "change": "The SQL of model stg_orders changed",
+   "risk": "high",
+   "explanation": "The change in the SQL of model stg_orders could affect the customer_id values, which are used to join with other tables and calculate totals. This could lead to incorrect or misleading data if the customer_id values have changed.",
+   "fix": "Review the changes made to stg_orders to ensure that the customer_id values remain consistent and accurate."
+  },
+  {
+   "key": "model_logic:stg_orders.shift_order_ids|orders|order_date|select|The SQL of model stg_orders changed",
+   "case_id": "model_logic:stg_orders.shift_order_ids",
+   "model": "orders",
+   "column": "order_date",
+   "roles": [
+    "select"
+   ],
+   "change": "The SQL of model stg_orders changed",
+   "risk": "high",
+   "explanation": "The change in the SQL of model stg_orders could affect the order_date, which is used to calculate various metrics in the final query. If the new SQL introduces errors or changes the data structure, it could lead to incorrect or misleading results.",
+   "fix": "Review the changes made to stg_orders and ensure that they do not alter the order_date column or its usage in subsequent queries."
+  },
+  {
+   "key": "model_logic:stg_orders.shift_order_ids|orders|order_id|select|The SQL of model stg_orders changed",
+   "case_id": "model_logic:stg_orders.shift_order_ids",
+   "model": "orders",
+   "column": "order_id",
+   "roles": [
+    "select"
+   ],
+   "change": "The SQL of model stg_orders changed",
+   "risk": "high",
+   "explanation": "The change in the SQL of model stg_orders could affect the order_id values, which are used to join with other tables and calculate totals. This could lead to incorrect or misleading data if the order_id values have changed.",
+   "fix": "Review the changes made to stg_orders to ensure that the order_id values remain consistent and do not change unexpectedly."
+  },
+  {
+   "key": "model_logic:stg_orders.shift_order_ids|orders|status|select|The SQL of model stg_orders changed",
+   "case_id": "model_logic:stg_orders.shift_order_ids",
+   "model": "orders",
+   "column": "status",
+   "roles": [
+    "select"
+   ],
+   "change": "The SQL of model stg_orders changed",
+   "risk": "high",
+   "explanation": "The change in the SQL of model stg_orders could affect the values in orders.status, which is used to filter and display data. If the new SQL logic for stg_orders changes how status is determined, it could lead to incorrect or misleading results in the final output.",
+   "fix": "Review the new SQL logic for stg_orders to ensure that it does not alter the definition of orders.status in a way that affects the integrity of the data pipeline."
+  },
+  {
+   "key": "model_logic:stg_payments.divide_by_1000|customers|None|join|The SQL of model stg_payments changed",
+   "case_id": "model_logic:stg_payments.divide_by_1000",
+   "model": "customers",
+   "column": null,
+   "roles": [
+    "join"
+   ],
+   "change": "The SQL of model stg_payments changed",
+   "risk": "high",
+   "explanation": "The change in the SQL of model stg_payments could affect the total_amount calculation in customer_payments, which is then used to calculate the customer_lifetime_value. This could lead to silently incorrect or misleading results if the join condition or aggregation logic changes unexpectedly.",
+   "fix": "Review and test the updated SQL for stg_payments to ensure it does not alter the intended data relationships or calculations."
+  },
+  {
+   "key": "model_logic:stg_payments.divide_by_1000|customers|customer_lifetime_value|select|The SQL of model stg_payments changed",
+   "case_id": "model_logic:stg_payments.divide_by_1000",
+   "model": "customers",
+   "column": "customer_lifetime_value",
+   "roles": [
+    "select"
+   ],
+   "change": "The SQL of model stg_payments changed",
+   "risk": "high",
+   "explanation": "The change in the SQL of model stg_payments could affect the calculation of customer_lifetime_value, as it is derived from payments. Without knowing the specifics of the changes made to stg_payments, there's a risk that the numbers produced could become wrong or misleading.",
+   "fix": "Review the changes made to stg_payments and ensure they do not impact the calculation of customer_lifetime_value."
+  },
+  {
+   "key": "model_logic:stg_payments.divide_by_1000|orders|None|group_by,join|The SQL of model stg_payments changed",
+   "case_id": "model_logic:stg_payments.divide_by_1000",
+   "model": "orders",
+   "column": null,
+   "roles": [
+    "group_by",
+    "join"
+   ],
+   "change": "The SQL of model stg_payments changed",
+   "risk": "high",
+   "explanation": "The change in the SQL of model stg_payments could affect the aggregation and grouping in the orders model, potentially leading to incorrect or misleading results if the new SQL does not handle order_id consistently.",
+   "fix": "Review the changes in stg_payments to ensure they do not alter the integrity of the data being aggregated and grouped in the orders model."
+  },
+  {
+   "key": "model_logic:stg_payments.divide_by_1000|orders|amount|select|The SQL of model stg_payments changed",
+   "case_id": "model_logic:stg_payments.divide_by_1000",
+   "model": "orders",
+   "column": "amount",
+   "roles": [
+    "select"
+   ],
+   "change": "The SQL of model stg_payments changed",
+   "risk": "high",
+   "explanation": "The change in the SQL of model stg_payments could affect the sum of amounts for each payment method, which is used to calculate the total_amount in the final query. This could lead to incorrect or misleading results if the changes introduce errors in the aggregation logic.",
+   "fix": "Review and test the updated SQL logic in stg_payments to ensure it correctly aggregates payment amounts by method before being used in the orders table."
+  },
+  {
+   "key": "model_logic:stg_payments.divide_by_1000|orders|bank_transfer_amount|select|The SQL of model stg_payments changed",
+   "case_id": "model_logic:stg_payments.divide_by_1000",
+   "model": "orders",
+   "column": "bank_transfer_amount",
+   "roles": [
+    "select"
+   ],
+   "change": "The SQL of model stg_payments changed",
+   "risk": "high",
+   "explanation": "The change in the SQL of model stg_payments could affect the calculation of bank_transfer_amount, leading to potentially incorrect or misleading results.",
+   "fix": "Review and update the logic for calculating bank_transfer_amount in the SQL of orders to ensure it accurately reflects changes in stg_payments."
+  },
+  {
+   "key": "model_logic:stg_payments.divide_by_1000|orders|coupon_amount|select|The SQL of model stg_payments changed",
+   "case_id": "model_logic:stg_payments.divide_by_1000",
+   "model": "orders",
+   "column": "coupon_amount",
+   "roles": [
+    "select"
+   ],
+   "change": "The SQL of model stg_payments changed",
+   "risk": "high",
+   "explanation": "The change in the SQL of model stg_payments could affect the calculation of coupon_amount in orders, potentially leading to incorrect or misleading results.",
+   "fix": "Review and update the logic for calculating coupon_amount in the final SELECT statement to ensure it accurately reflects changes in stg_payments."
+  },
+  {
+   "key": "model_logic:stg_payments.divide_by_1000|orders|credit_card_amount|select|The SQL of model stg_payments changed",
+   "case_id": "model_logic:stg_payments.divide_by_1000",
+   "model": "orders",
+   "column": "credit_card_amount",
+   "roles": [
+    "select"
+   ],
+   "change": "The SQL of model stg_payments changed",
+   "risk": "high",
+   "explanation": "The change in the SQL of model stg_payments could affect the calculation of credit_card_amount in orders, potentially leading to incorrect or misleading results.",
+   "fix": "Review and update the logic for calculating credit_card_amount in the final query to ensure it accurately reflects changes in stg_payments."
+  },
+  {
+   "key": "model_logic:stg_payments.divide_by_1000|orders|gift_card_amount|select|The SQL of model stg_payments changed",
+   "case_id": "model_logic:stg_payments.divide_by_1000",
+   "model": "orders",
+   "column": "gift_card_amount",
+   "roles": [
+    "select"
+   ],
+   "change": "The SQL of model stg_payments changed",
+   "risk": "high",
+   "explanation": "The change in the SQL of model stg_payments could affect the calculation of gift_card_amount, potentially leading to incorrect or misleading results.",
+   "fix": "Review and update the logic for calculating gift_card_amount in the orders query to ensure it accurately reflects changes in stg_payments."
+  },
+  {
+   "key": "model_logic:stg_payments.no_cents_conversion|customers|None|join|The SQL of model stg_payments changed",
+   "case_id": "model_logic:stg_payments.no_cents_conversion",
+   "model": "customers",
+   "column": null,
+   "roles": [
+    "join"
+   ],
+   "change": "The SQL of model stg_payments changed",
+   "risk": "high",
+   "explanation": "The change in the SQL of model stg_payments could affect the total_amount calculation in customer_payments, which is then used to calculate the customer_lifetime_value. This could lead to silently incorrect or misleading results if the join condition or aggregation logic changes unexpectedly.",
+   "fix": "Review and test the updated SQL for stg_payments to ensure it does not alter the intended data relationships or calculations."
+  },
+  {
+   "key": "model_logic:stg_payments.no_cents_conversion|customers|customer_lifetime_value|select|The SQL of model stg_payments changed",
+   "case_id": "model_logic:stg_payments.no_cents_conversion",
+   "model": "customers",
+   "column": "customer_lifetime_value",
+   "roles": [
+    "select"
+   ],
+   "change": "The SQL of model stg_payments changed",
+   "risk": "high",
+   "explanation": "The change in the SQL of model stg_payments could affect the calculation of customer_lifetime_value, as it is derived from payments. Without knowing the specifics of the changes made to stg_payments, there's a risk that the numbers produced could become wrong or misleading.",
+   "fix": "Review the changes made to stg_payments and ensure they do not impact the calculation of customer_lifetime_value."
+  },
+  {
+   "key": "model_logic:stg_payments.no_cents_conversion|orders|None|group_by,join|The SQL of model stg_payments changed",
+   "case_id": "model_logic:stg_payments.no_cents_conversion",
+   "model": "orders",
+   "column": null,
+   "roles": [
+    "group_by",
+    "join"
+   ],
+   "change": "The SQL of model stg_payments changed",
+   "risk": "high",
+   "explanation": "The change in the SQL of model stg_payments could affect the aggregation and grouping in the orders model, potentially leading to incorrect or misleading results if the new SQL does not handle order_id consistently.",
+   "fix": "Review the changes in stg_payments to ensure they do not alter the integrity of the data being aggregated and grouped in the orders model."
+  },
+  {
+   "key": "model_logic:stg_payments.no_cents_conversion|orders|amount|select|The SQL of model stg_payments changed",
+   "case_id": "model_logic:stg_payments.no_cents_conversion",
+   "model": "orders",
+   "column": "amount",
+   "roles": [
+    "select"
+   ],
+   "change": "The SQL of model stg_payments changed",
+   "risk": "high",
+   "explanation": "The change in the SQL of model stg_payments could affect the sum of amounts for each payment method, which is used to calculate the total_amount in the final query. This could lead to incorrect or misleading results if the changes introduce errors in the aggregation logic.",
+   "fix": "Review and test the updated SQL logic in stg_payments to ensure it correctly aggregates payment amounts by method before being used in the orders table."
+  },
+  {
+   "key": "model_logic:stg_payments.no_cents_conversion|orders|bank_transfer_amount|select|The SQL of model stg_payments changed",
+   "case_id": "model_logic:stg_payments.no_cents_conversion",
+   "model": "orders",
+   "column": "bank_transfer_amount",
+   "roles": [
+    "select"
+   ],
+   "change": "The SQL of model stg_payments changed",
+   "risk": "high",
+   "explanation": "The change in the SQL of model stg_payments could affect the calculation of bank_transfer_amount, leading to potentially incorrect or misleading results.",
+   "fix": "Review and update the logic for calculating bank_transfer_amount in the SQL of orders to ensure it accurately reflects changes in stg_payments."
+  },
+  {
+   "key": "model_logic:stg_payments.no_cents_conversion|orders|coupon_amount|select|The SQL of model stg_payments changed",
+   "case_id": "model_logic:stg_payments.no_cents_conversion",
+   "model": "orders",
+   "column": "coupon_amount",
+   "roles": [
+    "select"
+   ],
+   "change": "The SQL of model stg_payments changed",
+   "risk": "high",
+   "explanation": "The change in the SQL of model stg_payments could affect the calculation of coupon_amount in orders, potentially leading to incorrect or misleading results.",
+   "fix": "Review and update the logic for calculating coupon_amount in the final SELECT statement to ensure it accurately reflects changes in stg_payments."
+  },
+  {
+   "key": "model_logic:stg_payments.no_cents_conversion|orders|credit_card_amount|select|The SQL of model stg_payments changed",
+   "case_id": "model_logic:stg_payments.no_cents_conversion",
+   "model": "orders",
+   "column": "credit_card_amount",
+   "roles": [
+    "select"
+   ],
+   "change": "The SQL of model stg_payments changed",
+   "risk": "high",
+   "explanation": "The change in the SQL of model stg_payments could affect the calculation of credit_card_amount in orders, potentially leading to incorrect or misleading results.",
+   "fix": "Review and update the logic for calculating credit_card_amount in the final query to ensure it accurately reflects changes in stg_payments."
+  },
+  {
+   "key": "model_logic:stg_payments.no_cents_conversion|orders|gift_card_amount|select|The SQL of model stg_payments changed",
+   "case_id": "model_logic:stg_payments.no_cents_conversion",
+   "model": "orders",
+   "column": "gift_card_amount",
+   "roles": [
+    "select"
+   ],
+   "change": "The SQL of model stg_payments changed",
+   "risk": "high",
+   "explanation": "The change in the SQL of model stg_payments could affect the calculation of gift_card_amount, potentially leading to incorrect or misleading results.",
+   "fix": "Review and update the logic for calculating gift_card_amount in the orders query to ensure it accurately reflects changes in stg_payments."
+  },
+  {
+   "key": "model_logic:stg_payments.only_big_payments|customers|None|join|The SQL of model stg_payments changed",
+   "case_id": "model_logic:stg_payments.only_big_payments",
+   "model": "customers",
+   "column": null,
+   "roles": [
+    "join"
+   ],
+   "change": "The SQL of model stg_payments changed",
+   "risk": "high",
+   "explanation": "The change in the SQL of model stg_payments could affect the total_amount calculation in customer_payments, which is then used to calculate the customer_lifetime_value. This could lead to silently incorrect or misleading results if the join condition or aggregation logic changes unexpectedly.",
+   "fix": "Review and test the updated SQL for stg_payments to ensure it does not alter the intended data relationships or calculations."
+  },
+  {
+   "key": "model_logic:stg_payments.only_big_payments|customers|customer_lifetime_value|select|The SQL of model stg_payments changed",
+   "case_id": "model_logic:stg_payments.only_big_payments",
+   "model": "customers",
+   "column": "customer_lifetime_value",
+   "roles": [
+    "select"
+   ],
+   "change": "The SQL of model stg_payments changed",
+   "risk": "high",
+   "explanation": "The change in the SQL of model stg_payments could affect the calculation of customer_lifetime_value, as it is derived from payments. Without knowing the specifics of the changes made to stg_payments, there's a risk that the numbers produced could become wrong or misleading.",
+   "fix": "Review the changes made to stg_payments and ensure they do not impact the calculation of customer_lifetime_value."
+  },
+  {
+   "key": "model_logic:stg_payments.only_big_payments|orders|None|group_by,join|The SQL of model stg_payments changed",
+   "case_id": "model_logic:stg_payments.only_big_payments",
+   "model": "orders",
+   "column": null,
+   "roles": [
+    "group_by",
+    "join"
+   ],
+   "change": "The SQL of model stg_payments changed",
+   "risk": "high",
+   "explanation": "The change in the SQL of model stg_payments could affect the aggregation and grouping in the orders model, potentially leading to incorrect or misleading results if the new SQL does not handle order_id consistently.",
+   "fix": "Review the changes in stg_payments to ensure they do not alter the integrity of the data being aggregated and grouped in the orders model."
+  },
+  {
+   "key": "model_logic:stg_payments.only_big_payments|orders|amount|select|The SQL of model stg_payments changed",
+   "case_id": "model_logic:stg_payments.only_big_payments",
+   "model": "orders",
+   "column": "amount",
+   "roles": [
+    "select"
+   ],
+   "change": "The SQL of model stg_payments changed",
+   "risk": "high",
+   "explanation": "The change in the SQL of model stg_payments could affect the sum of amounts for each payment method, which is used to calculate the total_amount in the final query. This could lead to incorrect or misleading results if the changes introduce errors in the aggregation logic.",
+   "fix": "Review and test the updated SQL logic in stg_payments to ensure it correctly aggregates payment amounts by method before being used in the orders table."
+  },
+  {
+   "key": "model_logic:stg_payments.only_big_payments|orders|bank_transfer_amount|select|The SQL of model stg_payments changed",
+   "case_id": "model_logic:stg_payments.only_big_payments",
+   "model": "orders",
+   "column": "bank_transfer_amount",
+   "roles": [
+    "select"
+   ],
+   "change": "The SQL of model stg_payments changed",
+   "risk": "high",
+   "explanation": "The change in the SQL of model stg_payments could affect the calculation of bank_transfer_amount, leading to potentially incorrect or misleading results.",
+   "fix": "Review and update the logic for calculating bank_transfer_amount in the SQL of orders to ensure it accurately reflects changes in stg_payments."
+  },
+  {
+   "key": "model_logic:stg_payments.only_big_payments|orders|coupon_amount|select|The SQL of model stg_payments changed",
+   "case_id": "model_logic:stg_payments.only_big_payments",
+   "model": "orders",
+   "column": "coupon_amount",
+   "roles": [
+    "select"
+   ],
+   "change": "The SQL of model stg_payments changed",
+   "risk": "high",
+   "explanation": "The change in the SQL of model stg_payments could affect the calculation of coupon_amount in orders, potentially leading to incorrect or misleading results.",
+   "fix": "Review and update the logic for calculating coupon_amount in the final SELECT statement to ensure it accurately reflects changes in stg_payments."
+  },
+  {
+   "key": "model_logic:stg_payments.only_big_payments|orders|credit_card_amount|select|The SQL of model stg_payments changed",
+   "case_id": "model_logic:stg_payments.only_big_payments",
+   "model": "orders",
+   "column": "credit_card_amount",
+   "roles": [
+    "select"
+   ],
+   "change": "The SQL of model stg_payments changed",
+   "risk": "high",
+   "explanation": "The change in the SQL of model stg_payments could affect the calculation of credit_card_amount in orders, potentially leading to incorrect or misleading results.",
+   "fix": "Review and update the logic for calculating credit_card_amount in the final query to ensure it accurately reflects changes in stg_payments."
+  },
+  {
+   "key": "model_logic:stg_payments.only_big_payments|orders|gift_card_amount|select|The SQL of model stg_payments changed",
+   "case_id": "model_logic:stg_payments.only_big_payments",
+   "model": "orders",
+   "column": "gift_card_amount",
+   "roles": [
+    "select"
+   ],
+   "change": "The SQL of model stg_payments changed",
+   "risk": "high",
+   "explanation": "The change in the SQL of model stg_payments could affect the calculation of gift_card_amount, potentially leading to incorrect or misleading results.",
+   "fix": "Review and update the logic for calculating gift_card_amount in the orders query to ensure it accurately reflects changes in stg_payments."
+  },
+  {
+   "key": "model_logic:stg_payments.lower_payment_method|customers|None|join|The SQL of model stg_payments changed",
+   "case_id": "model_logic:stg_payments.lower_payment_method",
+   "model": "customers",
+   "column": null,
+   "roles": [
+    "join"
+   ],
+   "change": "The SQL of model stg_payments changed",
+   "risk": "high",
+   "explanation": "The change in the SQL of model stg_payments could affect the total_amount calculation in customer_payments, which is then used to calculate the customer_lifetime_value. This could lead to silently incorrect or misleading results if the join condition or aggregation logic changes unexpectedly.",
+   "fix": "Review and test the updated SQL for stg_payments to ensure it does not alter the intended data relationships or calculations."
+  },
+  {
+   "key": "model_logic:stg_payments.lower_payment_method|customers|customer_lifetime_value|select|The SQL of model stg_payments changed",
+   "case_id": "model_logic:stg_payments.lower_payment_method",
+   "model": "customers",
+   "column": "customer_lifetime_value",
+   "roles": [
+    "select"
+   ],
+   "change": "The SQL of model stg_payments changed",
+   "risk": "high",
+   "explanation": "The change in the SQL of model stg_payments could affect the calculation of customer_lifetime_value, as it is derived from payments. Without knowing the specifics of the changes made to stg_payments, there's a risk that the numbers produced could become wrong or misleading.",
+   "fix": "Review the changes made to stg_payments and ensure they do not impact the calculation of customer_lifetime_value."
+  },
+  {
+   "key": "model_logic:stg_payments.lower_payment_method|orders|None|group_by,join|The SQL of model stg_payments changed",
+   "case_id": "model_logic:stg_payments.lower_payment_method",
+   "model": "orders",
+   "column": null,
+   "roles": [
+    "group_by",
+    "join"
+   ],
+   "change": "The SQL of model stg_payments changed",
+   "risk": "high",
+   "explanation": "The change in the SQL of model stg_payments could affect the aggregation and grouping in the orders model, potentially leading to incorrect or misleading results if the new SQL does not handle order_id consistently.",
+   "fix": "Review the changes in stg_payments to ensure they do not alter the integrity of the data being aggregated and grouped in the orders model."
+  },
+  {
+   "key": "model_logic:stg_payments.lower_payment_method|orders|amount|select|The SQL of model stg_payments changed",
+   "case_id": "model_logic:stg_payments.lower_payment_method",
+   "model": "orders",
+   "column": "amount",
+   "roles": [
+    "select"
+   ],
+   "change": "The SQL of model stg_payments changed",
+   "risk": "high",
+   "explanation": "The change in the SQL of model stg_payments could affect the sum of amounts for each payment method, which is used to calculate the total_amount in the final query. This could lead to incorrect or misleading results if the changes introduce errors in the aggregation logic.",
+   "fix": "Review and test the updated SQL logic in stg_payments to ensure it correctly aggregates payment amounts by method before being used in the orders table."
+  },
+  {
+   "key": "model_logic:stg_payments.lower_payment_method|orders|bank_transfer_amount|select|The SQL of model stg_payments changed",
+   "case_id": "model_logic:stg_payments.lower_payment_method",
+   "model": "orders",
+   "column": "bank_transfer_amount",
+   "roles": [
+    "select"
+   ],
+   "change": "The SQL of model stg_payments changed",
+   "risk": "high",
+   "explanation": "The change in the SQL of model stg_payments could affect the calculation of bank_transfer_amount, leading to potentially incorrect or misleading results.",
+   "fix": "Review and update the logic for calculating bank_transfer_amount in the SQL of orders to ensure it accurately reflects changes in stg_payments."
+  },
+  {
+   "key": "model_logic:stg_payments.lower_payment_method|orders|coupon_amount|select|The SQL of model stg_payments changed",
+   "case_id": "model_logic:stg_payments.lower_payment_method",
+   "model": "orders",
+   "column": "coupon_amount",
+   "roles": [
+    "select"
+   ],
+   "change": "The SQL of model stg_payments changed",
+   "risk": "high",
+   "explanation": "The change in the SQL of model stg_payments could affect the calculation of coupon_amount in orders, potentially leading to incorrect or misleading results.",
+   "fix": "Review and update the logic for calculating coupon_amount in the final SELECT statement to ensure it accurately reflects changes in stg_payments."
+  },
+  {
+   "key": "model_logic:stg_payments.lower_payment_method|orders|credit_card_amount|select|The SQL of model stg_payments changed",
+   "case_id": "model_logic:stg_payments.lower_payment_method",
+   "model": "orders",
+   "column": "credit_card_amount",
+   "roles": [
+    "select"
+   ],
+   "change": "The SQL of model stg_payments changed",
+   "risk": "high",
+   "explanation": "The change in the SQL of model stg_payments could affect the calculation of credit_card_amount in orders, potentially leading to incorrect or misleading results.",
+   "fix": "Review and update the logic for calculating credit_card_amount in the final query to ensure it accurately reflects changes in stg_payments."
+  },
+  {
+   "key": "model_logic:stg_payments.lower_payment_method|orders|gift_card_amount|select|The SQL of model stg_payments changed",
+   "case_id": "model_logic:stg_payments.lower_payment_method",
+   "model": "orders",
+   "column": "gift_card_amount",
+   "roles": [
+    "select"
+   ],
+   "change": "The SQL of model stg_payments changed",
+   "risk": "high",
+   "explanation": "The change in the SQL of model stg_payments could affect the calculation of gift_card_amount, potentially leading to incorrect or misleading results.",
+   "fix": "Review and update the logic for calculating gift_card_amount in the orders query to ensure it accurately reflects changes in stg_payments."
+  }
+ ]
+}
