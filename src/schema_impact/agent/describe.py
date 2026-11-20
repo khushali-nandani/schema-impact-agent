@@ -14,6 +14,7 @@ from schema_impact.core.changes import (
     TableDropped,
 )
 from schema_impact.core.impact import Impact
+from schema_impact.core.lineage import ColumnRef
 
 
 def describe_change(change: Change) -> str:
@@ -63,3 +64,14 @@ def breaking_fix(change: Change) -> str:
         case ModelDropped(model):
             return f"Restore model {model}, or update every model that reads it."
     return "Review the affected SQL."
+
+
+def describe_path(impact: Impact) -> str:
+    """The chain from the changed column to the affected place."""
+    return " -> ".join(_describe_ref(ref) for ref in impact.path)
+
+
+def _describe_ref(ref: ColumnRef) -> str:
+    if ref.column is None:
+        return f"{ref.table} (whole model)"
+    return f"{ref.table}.{ref.column}"
