@@ -1,7 +1,10 @@
-"""Column-level lineage: which source columns feed which model columns.
+"""Column-level lineage: which source columns a model depends on, and how.
 
-Currently covers SELECT edges only. JOIN, WHERE and GROUP BY edges come later and will
-reuse the same Edge type with a different `kind`.
+Edge kinds:
+- select:   the source column feeds one output column of the model
+- join:     the source column is used in a JOIN condition (affects the whole model)
+- where:    the source column is used in a WHERE filter (affects the whole model)
+- group_by: the source column is used in GROUP BY (affects the whole model)
 """
 
 from dataclasses import dataclass
@@ -9,18 +12,25 @@ from dataclasses import dataclass
 import sqlglot
 from sqlglot import exp
 from sqlglot.lineage import Node, lineage
+from sqlglot.optimizer.qualify import qualify
 
 from schema_impact.core.registry import Model, Project
 
 SELECT = "select"
+JOIN = "join"
+WHERE = "where"
+GROUP_BY = "group_by"
 
 
 @dataclass(frozen=True)
 class ColumnRef:
-    """A column of a table or model, e.g. orders.amount."""
+    """A column of a table or model, e.g. orders.amount.
+
+    `column` is None when the reference is the whole model rather than one column.
+    """
 
     table: str
-    column: str
+    column: str | None
 
 
 @dataclass(frozen=True)
@@ -37,6 +47,7 @@ def build_lineage(project: Project) -> list[Edge]:
     edges: list[Edge] = []
     for model in project.models.values():
         edges.extend(_select_edges(model, project))
+        edges.extend(_clause_edges(model, project))
     return edges
 
 
@@ -52,6 +63,36 @@ def _select_edges(model: Model, project: Project) -> list[Edge]:
             source = _source_column(leaf)
             if source is not None:
                 edges[Edge(source=source, target=target, kind=SELECT)] = None
+
+    return list(edges)
+
+
+def _clause_edges(model: Model, project: Project) -> list[Edge]:
+    """Edges from columns used in JOIN, WHERE and GROUP BY to the whole model.
+
+    These columns never reach an output column, yet changing them changes the model.
+    """
+    parsed = sqlglot.parse_one(model.sql, read=project.dialect)
+    # qualify() puts a table alias on every column, so "status" becomes "o.status"
+    query = qualify(parsed, schema=project.schema, dialect=project.dialect)
+    real_tables = {t.alias_or_name: t.name for t in query.find_all(exp.Table)}
+    target = ColumnRef(model.name, None)
+
+    clauses: list[tuple[str, exp.Expression | None]] = [
+        (JOIN, join.args.get("on")) for join in query.args.get("joins", [])
+    ]
+    clauses.append((WHERE, query.args.get("where")))
+    clauses.append((GROUP_BY, query.args.get("group")))
+
+    edges: dict[Edge, None] = {}
+    for kind, clause in clauses:
+        if clause is None:
+            continue
+        for column in clause.find_all(exp.Column):
+            table = real_tables.get(column.table)
+            if table is not None:
+                source = ColumnRef(table, column.name)
+                edges[Edge(source=source, target=target, kind=kind)] = None
 
     return list(edges)
 
