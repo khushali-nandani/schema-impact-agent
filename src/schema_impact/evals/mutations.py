@@ -21,6 +21,7 @@ otherwise, so a mutation can never silently do nothing.
 
 import csv
 import json
+import os
 import re
 from collections.abc import Callable, Sequence
 from dataclasses import dataclass
@@ -239,8 +240,12 @@ def _read_csv(path: Path) -> list[list[str]]:
 
 
 def _write_csv(path: Path, rows: list[list[str]]) -> None:
-    with path.open("w", newline="") as handle:
+    """Write the file by replacing it. If `path` is a link to a shared file (see dbt_runner.py),
+    the link is replaced and the file it points to is left as it was."""
+    temporary = path.with_name(f".{path.name}.tmp")
+    with temporary.open("w", newline="") as handle:
         csv.writer(handle, lineterminator="\n").writerows(rows)
+    os.replace(temporary, path)
 
 
 def _column_index(header: list[str], column: str, path: Path) -> int:
