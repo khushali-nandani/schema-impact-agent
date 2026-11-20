@@ -41,3 +41,11 @@ One fast tool covers lint and format. Rule set is deliberately small (`E`, `F`, 
 ## 10. Ground truth from mutation testing
 
 Benchmark labels (breaking, silent, safe) come from running `dbt build` on mutated projects and diffing output tables, not from hand-labelling. This makes the benchmark large, objective and repeatable.
+
+## 11. Clause dependencies point at the whole model (`column=None`)
+
+A column used only in JOIN, WHERE, GROUP BY, HAVING or ORDER BY does not feed any output column, but changing it still changes the model. Those edges therefore target `ColumnRef(model, None)`. `None` cannot collide with a real column name, unlike a placeholder such as `"*"`.
+
+## 12. Qualify the query first and collect clause edges per SELECT scope
+
+`qualify()` expands `SELECT *` and puts a table alias on every column. Clause edges are then collected per SELECT scope (main query, CTEs, subqueries), so the same alias can mean different tables in different SELECTs. A first version looked only at the top-level SELECT and silently missed filters inside CTEs, which is exactly the silent-breakage case this project exists to catch.
