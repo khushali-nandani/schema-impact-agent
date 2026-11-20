@@ -38,3 +38,6 @@ select = ["E", "F", "I", "UP", "B"]
 
 [tool.pytest.ini_options]
 testpaths = ["tests"]
+# Tests that run dbt are slow and need `uv sync --group bench`; run them with `pytest -m bench`
+addopts = "-m 'not bench'"
+markers = ["bench: slow tests that run dbt and DuckDB (need the bench dependency group)"]
