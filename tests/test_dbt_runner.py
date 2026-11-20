@@ -9,7 +9,6 @@ pytest.importorskip("duckdb")
 pytest.importorskip("dbt")
 
 from schema_impact.evals.dbt_runner import run_baseline, run_case  # noqa: E402
-
 from schema_impact.evals.groundtruth import BREAKING, SAFE, SILENT  # noqa: E402
 from schema_impact.evals.jaffle_recipes import JAFFLE_RECIPES  # noqa: E402
 from schema_impact.evals.mutations import generate_mutations  # noqa: E402
