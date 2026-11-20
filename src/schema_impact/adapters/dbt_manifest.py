@@ -9,6 +9,12 @@ source tables (seeds and dbt sources) are in `target/catalog.json`, written by
     dbt seed && dbt run && dbt docs generate
     project = load_dbt_project("path/to/dbt_project")
 
+CSV sources: with dbt-duckdb a source can be a file (`external_location`). dbt compiles it to
+`select * from 'data/orders.csv'`, a table named by its path, and `dbt docs generate` lists no
+columns for it. Such a file is named `<source>__<table>` (e.g. `olist__orders`) in the models,
+and its columns and types are read from the file with DuckDB. That needs the `duckdb` package and
+the CSV files in place.
+
 Limits: ephemeral models are inlined by dbt into their readers and are loaded like any other model.
 Table and column names are used as dbt writes them; no case folding is done.
 """
@@ -26,12 +32,17 @@ _SOURCE_PREFIXES = ("seed.", "source.")
 
 def load_dbt_project(project_dir: str | Path, dialect: str = DEFAULT_DIALECT) -> Project:
     """Read models (compiled SQL) and source tables (columns) from a dbt project's target/."""
-    target = Path(project_dir) / "target"
+    project_dir = Path(project_dir)
+    target = project_dir / "target"
     manifest = _read_json(target / "manifest.json", "Run `dbt compile` (or `dbt run`) first.")
     catalog = _read_json(target / "catalog.json", "Run `dbt docs generate` first.")
+    csv_sources = _csv_sources(manifest)
+    schema = _schema(catalog)
+    for name, path in csv_sources.items():
+        schema[name] = _csv_columns(name, project_dir / path)
     return Project(
-        models=_models(manifest, dialect),
-        schema=_schema(catalog),
+        models=_models(manifest, dialect, {path: name for name, path in csv_sources.items()}),
+        schema=schema,
         dialect=dialect,
     )
 
@@ -42,7 +53,7 @@ def _read_json(path: Path, hint: str) -> dict:
     return json.loads(path.read_text())
 
 
-def _models(manifest: dict, dialect: str) -> dict[str, Model]:
+def _models(manifest: dict, dialect: str, csv_names: dict[str, str]) -> dict[str, Model]:
     models: dict[str, Model] = {}
     for node in manifest["nodes"].values():
         if node["resource_type"] != "model":
@@ -56,7 +67,7 @@ def _models(manifest: dict, dialect: str) -> dict[str, Model]:
             )
         models[name] = Model(
             name=name,
-            sql=_without_database_and_schema(sql, dialect),
+            sql=_without_database_and_schema(sql, dialect, csv_names),
             path=Path(node["original_file_path"]),
         )
     return dict(sorted(models.items()))
@@ -73,13 +84,50 @@ def _schema(catalog: dict) -> Schema:
     return schema
 
 
-def _without_database_and_schema(sql: str, dialect: str) -> str:
+def _csv_sources(manifest: dict) -> dict[str, str]:
+    """Sources that are files: {name used in the models: path of the file}.
+
+    dbt gives such a source the file path, in single quotes, as its relation name
+    (`'data/orders.csv'`); a source that is a table has a dotted, double-quoted name instead.
+    """
+    files: dict[str, str] = {}
+    for source in manifest.get("sources", {}).values():
+        relation = source.get("relation_name") or ""
+        if len(relation) > 2 and relation[0] == relation[-1] == "'":
+            files[f"{source['source_name']}__{source['name']}"] = relation[1:-1]
+    return dict(sorted(files.items()))
+
+
+def _csv_columns(name: str, path: Path) -> dict[str, str]:
+    """Column names and types of a CSV file, in file order, as DuckDB reads them."""
+    if not path.is_file():
+        raise FileNotFoundError(
+            f"{path} not found. The source {name} is read from this file, so it must be there."
+        )
+    try:
+        import duckdb
+    except ImportError as error:
+        raise ImportError(
+            f"Reading the columns of {path.name} needs duckdb: `uv sync --group bench`."
+        ) from error
+    connection = duckdb.connect()
+    try:
+        rows = connection.execute("DESCRIBE SELECT * FROM read_csv(?)", [str(path)]).fetchall()
+    finally:
+        connection.close()
+    return {column: column_type for column, column_type, *_ in rows}
+
+
+def _without_database_and_schema(sql: str, dialect: str, csv_names: dict[str, str]) -> str:
     """dbt writes "jaffle_shop"."main"."stg_orders"; the rest of the tool knows it as stg_orders.
 
+    A table that is the path of a CSV file gets the name of its source instead.
     The SQL comes back from sqlglot, so keywords are normalised to upper case.
     """
     tree = sqlglot.parse_one(sql, read=dialect)
     for table in tree.find_all(exp.Table):
         table.set("catalog", None)
         table.set("db", None)
+        if table.name in csv_names:
+            table.set("this", exp.to_identifier(csv_names[table.name]))
     return tree.sql(dialect=dialect)
