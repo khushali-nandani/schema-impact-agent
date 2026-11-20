@@ -115,3 +115,22 @@ The agent's predictions are then scored against this ground truth with precision
 - For dbt, compiled SQL and column schema are extracted from `manifest.json`.
 - `MERGE` and incremental models are out of scope for v1.
 - Data used for development and evaluation is public or synthetic only.
+
+### Lineage edge kinds (implemented in L0)
+
+| Kind | Meaning | Target |
+|---|---|---|
+| `select` | Source column feeds an output column | that output column |
+| `join` | Used in a JOIN condition | whole model |
+| `where` | Used in a WHERE filter | whole model |
+| `group_by` | Used in GROUP BY | whole model |
+| `having` | Used in HAVING | whole model |
+| `order_by` | Used in the query's ORDER BY | whole model |
+
+Window `PARTITION BY` / `ORDER BY` columns are `select` edges to the window's output column.
+
+### Known lineage limits
+
+- Clause edges for a column that comes from a CTE or subquery *output* (rather than a real table) are not traced back to the underlying table yet.
+- A model that reads another model (model-to-model chains) is not resolved yet; sources must be tables from the schema.
+- `UNION` queries and dialect-specific syntax have no dedicated tests yet.
