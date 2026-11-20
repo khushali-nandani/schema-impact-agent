@@ -174,3 +174,68 @@ def format_confusion(metrics: Metrics) -> str:
         cells = " | ".join(str(metrics.confusion.get((truth, p), 0)) for p in _PREDICTIONS)
         lines.append(f"| {truth} | {cells} |")
     return "\n".join(lines)
+
+
+def format_by_kind(by_kind: dict[str, Metrics]) -> str:
+    lines = [
+        "| Mutation kind | Pairs | Affected recall | Breaking recall | Silent flagged |",
+        "|---|---|---|---|---|",
+    ]
+    for kind, m in by_kind.items():
+        cells = [m.pairs, m.affected_recall, m.breaking_recall, m.silent_flagged]
+        lines.append(f"| {kind} | " + " | ".join(str(c) for c in cells) + " |")
+    return "\n".join(lines)
+
+
+def format_errors(outcomes: list[Outcome]) -> str:
+    """The cases and models the tool got wrong: misses, and false alarms on safe models."""
+    missed = [o for o in outcomes if o.truth in ("breaking", "silent") and o.prediction == "none"]
+    alarms = [o for o in outcomes if o.truth == "safe" and o.prediction != "none"]
+    sections = [
+        ("Missed (breaking or silent, predicted none)", missed),
+        ("False alarms (safe, but flagged)", alarms),
+    ]
+    lines: list[str] = []
+    for title, wrong in sections:
+        lines += [f"### {title}: {len(wrong)}", ""]
+        by_case: dict[str, list[str]] = {}
+        for o in wrong:
+            by_case.setdefault(o.case_id, []).append(o.model)
+        lines += [
+            f"- {case}: {', '.join(sorted(models))}" for case, models in sorted(by_case.items())
+        ]
+        if not wrong:
+            lines.append("- none")
+        lines.append("")
+    return "\n".join(lines).rstrip()
+
+
+def build_report(dataset: Dataset, result: ScoreResult, title: str) -> str:
+    """A markdown report of one scoring run."""
+    metrics = compute_metrics(result.outcomes)
+    meta = dataset.meta
+    sources = f"dbt-core {meta.get('dbt_core')}, dbt-duckdb {meta.get('dbt_duckdb')}"
+    lines = [
+        f"# {title}",
+        "",
+        f"{len(dataset.cases) - len(result.skipped)} cases, {metrics.pairs} (case, model) pairs. "
+        f"{len(result.skipped)} cases skipped. Ground truth from {sources}.",
+        "",
+        "## Metrics",
+        "",
+        format_report(metrics),
+        "",
+        "## Confusion matrix",
+        "",
+        format_confusion(metrics),
+        "",
+        "## By mutation kind",
+        "",
+        format_by_kind(metrics_by_kind(result.outcomes)),
+        "",
+        "## Errors",
+        "",
+        format_errors(result.outcomes),
+        "",
+    ]
+    return "\n".join(lines)
