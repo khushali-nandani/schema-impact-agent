@@ -222,3 +222,31 @@ def format_judge_errors(outcomes: list[Outcome], judged: Sequence[JudgedItem]) -
     for title, entries in wrong.items():
         lines += [f"### {title}: {len(entries)}", ""] + (entries or ["- none"]) + [""]
     return "\n".join(lines).rstrip()
+
+
+def build_judge_report(
+    dataset: Dataset, outcomes: list[Outcome], meta: dict[str, Any], judged: Sequence[JudgedItem]
+) -> str:
+    """A markdown section on how the judge did, to add to the deterministic report."""
+    from schema_impact.evals.scorer import compute_metrics
+
+    asked = len({(item.case_id, item.model) for item in judged})
+    lines = [
+        "## With the LLM judge",
+        "",
+        f"Judge: {meta.get('judge_model')} (answers saved {meta.get('generated')}). "
+        f"{len(judged)} impacts of {asked} models were put to it; every other prediction is "
+        "unchanged. A model stays flagged if any of its impacts was judged high.",
+        "",
+        format_comparison(
+            compute_metrics(outcomes),
+            compute_metrics(apply_judgments(outcomes, judged)),
+            judge_accuracy(outcomes, judged),
+        ),
+        "",
+        "## Where the judge was wrong",
+        "",
+        format_judge_errors(outcomes, judged),
+        "",
+    ]
+    return "\n".join(lines)
