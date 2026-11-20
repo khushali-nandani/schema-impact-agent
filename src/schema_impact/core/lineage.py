@@ -5,6 +5,8 @@ Edge kinds:
 - join:     the source column is used in a JOIN condition (affects the whole model)
 - where:    the source column is used in a WHERE filter (affects the whole model)
 - group_by: the source column is used in GROUP BY (affects the whole model)
+- having:   the source column is used in HAVING (affects the whole model)
+- order_by: the source column is used in the query's ORDER BY (affects the whole model)
 """
 
 from dataclasses import dataclass
@@ -21,6 +23,8 @@ SELECT = "select"
 JOIN = "join"
 WHERE = "where"
 GROUP_BY = "group_by"
+HAVING = "having"
+ORDER_BY = "order_by"
 
 
 @dataclass(frozen=True)
@@ -79,6 +83,8 @@ _CLAUSE_KINDS: dict[type[exp.Expression], str] = {
     exp.Join: JOIN,
     exp.Where: WHERE,
     exp.Group: GROUP_BY,
+    exp.Having: HAVING,
+    exp.Order: ORDER_BY,
 }
 
 
