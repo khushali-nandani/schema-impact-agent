@@ -41,7 +41,7 @@ def test_product_sales_select_edges(select_edges):
 
 def test_aliases_are_resolved_to_real_tables(select_edges):
     source_tables = {e.source.table for e in select_edges}
-    assert source_tables <= {"customers", "products", "orders", "order_items"}
+    assert source_tables <= {"customers", "products", "orders", "order_items", "customer_totals"}
 
 
 def test_expression_column_has_several_sources(select_edges):

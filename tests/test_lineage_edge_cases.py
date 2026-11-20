@@ -130,3 +130,10 @@ def test_case_expression_uses_all_its_columns(make_project):
 
 def test_literal_only_select_has_no_edges(make_project):
     assert build_lineage(make_project("SELECT 1 AS one FROM orders")) == []
+
+
+def test_order_by_an_output_alias_follows_it_to_the_source_column(make_project):
+    project = make_project(
+        "SELECT customer_id, SUM(amount) AS t FROM orders GROUP BY customer_id ORDER BY t"
+    )
+    assert (col("orders", "amount"), None, "order_by") in edges_of(project, "order_by")
