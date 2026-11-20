@@ -31,6 +31,23 @@ TIMEOUT_SECONDS = 300
 _NOT_COPIED = shutil.ignore_patterns("target", "logs", "*.duckdb", "*.duckdb.wal", ".user.yml")
 _LINKED_FOLDERS = ("data",)  # their files are shared between copies, not copied
 
+# A model that reads a CSV file is a view holding the relative path of the file, which DuckDB
+# looks up when the view is queried, in the folder the process runs in. Two databases cannot be
+# compared from one place, so the rows of every built model are copied into a plain database
+# while we are in the project's folder.
+SNAPSHOT_FILE = "snapshot.db"
+_SNAPSHOT_SCRIPT = """
+import json, sys
+import duckdb
+database, models, snapshot = sys.argv[1], json.loads(sys.argv[2]), sys.argv[3]
+con = duckdb.connect(snapshot)
+con.execute("ATTACH ? AS built (READ_ONLY)", [database])
+for name in models:
+    quoted = '"' + name.replace('"', '""') + '"'
+    con.execute(f"CREATE TABLE main.{quoted} AS SELECT * FROM built.main.{quoted}")
+con.close()
+"""
+
 
 class DbtError(Exception):
     """dbt could not be run, or did not leave the files the ground truth needs."""
@@ -42,7 +59,7 @@ def run_baseline(project_dir: str | Path, workdir: str | Path) -> Baseline:
     shutil.rmtree(target, ignore_errors=True)
     _copy_project(Path(project_dir), target)
     statuses, project = _build(target)
-    return Baseline(statuses=statuses, project=project, database=_database(target))
+    return Baseline(statuses=statuses, project=project, database=target / SNAPSHOT_FILE)
 
 
 def run_case(
@@ -63,7 +80,7 @@ def run_case(
             if status is None:
                 raise DbtError(f"dbt reported no status for model {model}")
             changed = status == "success" and outputs_changed(
-                baseline.database, _database(case_dir), model
+                baseline.database, case_dir / SNAPSHOT_FILE, model
             )
             labels[model] = label_model(status, changed)
         return CaseResult(mutation, statuses, labels, after, None)
@@ -84,11 +101,32 @@ def _build(project_dir: Path) -> tuple[dict[str, str], Project]:
         raise DbtError(f"dbt run wrote no run_results.json:\n{_tail(run)}")
     # read now: `dbt docs generate` overwrites run_results.json
     statuses = statuses_from_run_results(json.loads(run_results.read_text()))
+    _snapshot(project_dir, [name for name, status in statuses.items() if status == "success"])
 
     docs = _dbt(project_dir, "docs", "generate")
     if docs.returncode != 0:
         raise DbtError(f"dbt docs generate failed:\n{_tail(docs)}")
     return statuses, load_dbt_project(project_dir)
+
+
+def _snapshot(project_dir: Path, models: list[str]) -> Path:
+    """Copy the rows of `models` from the project's database into `snapshot.db` beside it.
+
+    Runs in the project folder, so views over CSV files read the project's own files.
+    """
+    path = project_dir / SNAPSHOT_FILE
+    path.unlink(missing_ok=True)
+    result = subprocess.run(
+        [sys.executable, "-I", "-c", _SNAPSHOT_SCRIPT]
+        + [str(_database(project_dir).resolve()), json.dumps(models), SNAPSHOT_FILE],
+        cwd=project_dir,
+        capture_output=True,
+        text=True,
+        timeout=TIMEOUT_SECONDS,
+    )
+    if result.returncode != 0:
+        raise DbtError(f"Could not snapshot the built models:\n{_tail(result)}")
+    return path
 
 
 def _dbt(project_dir: Path, *args: str) -> subprocess.CompletedProcess[str]:
