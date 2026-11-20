@@ -14,13 +14,13 @@ import re
 import shutil
 import subprocess
 import sys
-from dataclasses import dataclass
 from pathlib import Path
 
 from schema_impact.adapters.dbt_manifest import load_dbt_project
 from schema_impact.core.registry import Project
 from schema_impact.evals.groundtruth import label_model, scored_models, statuses_from_run_results
 from schema_impact.evals.mutations import Mutation, MutationError, apply_mutation
+from schema_impact.evals.results import Baseline, CaseResult
 from schema_impact.evals.tablediff import outputs_changed
 
 TIMEOUT_SECONDS = 300
@@ -29,24 +29,6 @@ _NOT_COPIED = shutil.ignore_patterns("target", "logs", "dbt_packages", "*.duckdb
 
 class DbtError(Exception):
     """dbt could not be run, or did not leave the files the ground truth needs."""
-
-
-@dataclass(frozen=True)
-class Baseline:
-    """The unmutated project after a build."""
-
-    statuses: dict[str, str]  # model -> dbt status
-    project: Project  # as read back from dbt's artifacts
-    database: Path  # the DuckDB file the build wrote
-
-
-@dataclass(frozen=True)
-class CaseResult:
-    mutation: Mutation
-    statuses: dict[str, str]  # model -> dbt status ("success", "error", "skipped")
-    labels: dict[str, str]  # model -> breaking / silent / safe, for the scored models
-    after: Project | None  # the project after the mutation, from dbt's artifacts
-    error: str | None  # why the case could not be evaluated; then labels and after are empty
 
 
 def run_baseline(project_dir: str | Path, workdir: str | Path) -> Baseline:
