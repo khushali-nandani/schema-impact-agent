@@ -25,6 +25,14 @@ class Judgment:
     fix: str  # what to do about it
 
 
+@dataclass(frozen=True)
+class Verdict:
+    """A judgment together with the impact it is about."""
+
+    impact: Impact
+    judgment: Judgment
+
+
 class Judge(Protocol):
     def judge(self, impact: Impact) -> Judgment: ...
 
