@@ -1,0 +1,51 @@
+{
+  "nodes": {
+    "model.ecommerce_analytics.stg_olist__orders": {
+      "unique_id": "model.ecommerce_analytics.stg_olist__orders",
+      "resource_type": "model",
+      "name": "stg_olist__orders",
+      "alias": "stg_olist__orders",
+      "original_file_path": "models/staging/stg_olist__orders.sql",
+      "compiled_code": "with\n    source as (select * from 'data/olist_orders_dataset.csv'),\n    renamed as (\n        select\n            order_id,\n            customer_id,\n            order_status,\n            order_purchase_timestamp,\n            order_approved_at as order_approved_timestamp,\n            order_delivered_carrier_date as order_delivered_carrier_timestamp,\n            order_delivered_customer_date as order_delivered_customer_timestamp,\n            cast(order_estimated_delivery_date as date) as order_estimated_delivery_date\n        from source\n    )\nselect *\nfrom renamed",
+      "relation_name": "\"olist\".\"main\".\"stg_olist__orders\""
+    },
+    "model.ecommerce_analytics.stg_olist__order_items": {
+      "unique_id": "model.ecommerce_analytics.stg_olist__order_items",
+      "resource_type": "model",
+      "name": "stg_olist__order_items",
+      "alias": "stg_olist__order_items",
+      "original_file_path": "models/staging/stg_olist__order_items.sql",
+      "compiled_code": "with\n    source as (select * from 'data/olist_order_items_dataset.csv'),\n    renamed as (\n        select\n            order_id,\n            order_item_id,\n            product_id,\n            seller_id,\n            shipping_limit_date as shipping_limit_timestamp,\n            price,\n            freight_value\n        from source\n    )\nselect *\nfrom renamed",
+      "relation_name": "\"olist\".\"main\".\"stg_olist__order_items\""
+    },
+    "model.ecommerce_analytics.int_order_items_aggregated": {
+      "unique_id": "model.ecommerce_analytics.int_order_items_aggregated",
+      "resource_type": "model",
+      "name": "int_order_items_aggregated",
+      "alias": "int_order_items_aggregated",
+      "original_file_path": "models/intermediate/int_order_items_aggregated.sql",
+      "compiled_code": "with\n    order_items as (select * from \"olist\".\"main\".\"stg_olist__order_items\"),\n    aggregated as (\n        select\n            order_id,\n            count(*) as item_count,\n            sum(price) as total_item_price,\n            sum(freight_value) as total_freight_value\n        from order_items\n        group by order_id\n    )\nselect *\nfrom aggregated",
+      "relation_name": "\"olist\".\"main\".\"int_order_items_aggregated\""
+    }
+  },
+  "sources": {
+    "source.ecommerce_analytics.olist.orders": {
+      "unique_id": "source.ecommerce_analytics.olist.orders",
+      "resource_type": "source",
+      "name": "orders",
+      "source_name": "olist",
+      "identifier": "orders",
+      "relation_name": "'data/olist_orders_dataset.csv'",
+      "original_file_path": "models/staging/_olist__sources.yml"
+    },
+    "source.ecommerce_analytics.olist.order_items": {
+      "unique_id": "source.ecommerce_analytics.olist.order_items",
+      "resource_type": "source",
+      "name": "order_items",
+      "source_name": "olist",
+      "identifier": "order_items",
+      "relation_name": "'data/olist_order_items_dataset.csv'",
+      "original_file_path": "models/staging/_olist__sources.yml"
+    }
+  }
+}
