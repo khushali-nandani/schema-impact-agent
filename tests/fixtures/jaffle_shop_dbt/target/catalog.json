@@ -1,0 +1,261 @@
+{
+ "metadata": {
+  "note": "trimmed to the fields the adapter reads"
+ },
+ "nodes": {
+  "model.jaffle_shop.customers": {
+   "metadata": {
+    "name": "customers",
+    "type": "BASE TABLE"
+   },
+   "columns": {
+    "customer_id": {
+     "name": "customer_id",
+     "type": "INTEGER",
+     "index": 1
+    },
+    "first_name": {
+     "name": "first_name",
+     "type": "VARCHAR",
+     "index": 2
+    },
+    "last_name": {
+     "name": "last_name",
+     "type": "VARCHAR",
+     "index": 3
+    },
+    "first_order": {
+     "name": "first_order",
+     "type": "DATE",
+     "index": 4
+    },
+    "most_recent_order": {
+     "name": "most_recent_order",
+     "type": "DATE",
+     "index": 5
+    },
+    "number_of_orders": {
+     "name": "number_of_orders",
+     "type": "BIGINT",
+     "index": 6
+    },
+    "customer_lifetime_value": {
+     "name": "customer_lifetime_value",
+     "type": "DOUBLE",
+     "index": 7
+    }
+   }
+  },
+  "model.jaffle_shop.orders": {
+   "metadata": {
+    "name": "orders",
+    "type": "BASE TABLE"
+   },
+   "columns": {
+    "order_id": {
+     "name": "order_id",
+     "type": "INTEGER",
+     "index": 1
+    },
+    "customer_id": {
+     "name": "customer_id",
+     "type": "INTEGER",
+     "index": 2
+    },
+    "order_date": {
+     "name": "order_date",
+     "type": "DATE",
+     "index": 3
+    },
+    "status": {
+     "name": "status",
+     "type": "VARCHAR",
+     "index": 4
+    },
+    "credit_card_amount": {
+     "name": "credit_card_amount",
+     "type": "DOUBLE",
+     "index": 5
+    },
+    "coupon_amount": {
+     "name": "coupon_amount",
+     "type": "DOUBLE",
+     "index": 6
+    },
+    "bank_transfer_amount": {
+     "name": "bank_transfer_amount",
+     "type": "DOUBLE",
+     "index": 7
+    },
+    "gift_card_amount": {
+     "name": "gift_card_amount",
+     "type": "DOUBLE",
+     "index": 8
+    },
+    "amount": {
+     "name": "amount",
+     "type": "DOUBLE",
+     "index": 9
+    }
+   }
+  },
+  "seed.jaffle_shop.raw_customers": {
+   "metadata": {
+    "name": "raw_customers",
+    "type": "BASE TABLE"
+   },
+   "columns": {
+    "id": {
+     "name": "id",
+     "type": "INTEGER",
+     "index": 1
+    },
+    "first_name": {
+     "name": "first_name",
+     "type": "VARCHAR",
+     "index": 2
+    },
+    "last_name": {
+     "name": "last_name",
+     "type": "VARCHAR",
+     "index": 3
+    }
+   }
+  },
+  "seed.jaffle_shop.raw_orders": {
+   "metadata": {
+    "name": "raw_orders",
+    "type": "BASE TABLE"
+   },
+   "columns": {
+    "id": {
+     "name": "id",
+     "type": "INTEGER",
+     "index": 1
+    },
+    "user_id": {
+     "name": "user_id",
+     "type": "INTEGER",
+     "index": 2
+    },
+    "order_date": {
+     "name": "order_date",
+     "type": "DATE",
+     "index": 3
+    },
+    "status": {
+     "name": "status",
+     "type": "VARCHAR",
+     "index": 4
+    }
+   }
+  },
+  "seed.jaffle_shop.raw_payments": {
+   "metadata": {
+    "name": "raw_payments",
+    "type": "BASE TABLE"
+   },
+   "columns": {
+    "id": {
+     "name": "id",
+     "type": "INTEGER",
+     "index": 1
+    },
+    "order_id": {
+     "name": "order_id",
+     "type": "INTEGER",
+     "index": 2
+    },
+    "payment_method": {
+     "name": "payment_method",
+     "type": "VARCHAR",
+     "index": 3
+    },
+    "amount": {
+     "name": "amount",
+     "type": "INTEGER",
+     "index": 4
+    }
+   }
+  },
+  "model.jaffle_shop.stg_customers": {
+   "metadata": {
+    "name": "stg_customers",
+    "type": "VIEW"
+   },
+   "columns": {
+    "customer_id": {
+     "name": "customer_id",
+     "type": "INTEGER",
+     "index": 1
+    },
+    "first_name": {
+     "name": "first_name",
+     "type": "VARCHAR",
+     "index": 2
+    },
+    "last_name": {
+     "name": "last_name",
+     "type": "VARCHAR",
+     "index": 3
+    }
+   }
+  },
+  "model.jaffle_shop.stg_orders": {
+   "metadata": {
+    "name": "stg_orders",
+    "type": "VIEW"
+   },
+   "columns": {
+    "order_id": {
+     "name": "order_id",
+     "type": "INTEGER",
+     "index": 1
+    },
+    "customer_id": {
+     "name": "customer_id",
+     "type": "INTEGER",
+     "index": 2
+    },
+    "order_date": {
+     "name": "order_date",
+     "type": "DATE",
+     "index": 3
+    },
+    "status": {
+     "name": "status",
+     "type": "VARCHAR",
+     "index": 4
+    }
+   }
+  },
+  "model.jaffle_shop.stg_payments": {
+   "metadata": {
+    "name": "stg_payments",
+    "type": "VIEW"
+   },
+   "columns": {
+    "payment_id": {
+     "name": "payment_id",
+     "type": "INTEGER",
+     "index": 1
+    },
+    "order_id": {
+     "name": "order_id",
+     "type": "INTEGER",
+     "index": 2
+    },
+    "payment_method": {
+     "name": "payment_method",
+     "type": "VARCHAR",
+     "index": 3
+    },
+    "amount": {
+     "name": "amount",
+     "type": "DOUBLE",
+     "index": 4
+    }
+   }
+  }
+ }
+}
