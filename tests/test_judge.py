@@ -1,6 +1,6 @@
 import pytest
-from schema_impact.agent.judge import HIGH, LOW, FakeJudge, Judge, Judgment
 
+from schema_impact.agent.judge import HIGH, LOW, FakeJudge, Judge, Judgment
 from schema_impact.core.changes import ColumnTypeChanged
 from schema_impact.core.impact import NEEDS_REVIEW, Impact
 from schema_impact.core.lineage import ColumnRef
