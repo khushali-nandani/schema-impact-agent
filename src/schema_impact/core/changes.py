@@ -10,7 +10,14 @@ from dataclasses import dataclass
 
 import sqlglot
 
-from schema_impact.core.registry import Project, Schema
+from schema_impact.core.lineage import (
+    UNKNOWN_TYPE,
+    CircularDependencyError,
+    _in_dependency_order,
+    model_outputs,
+    output_columns_best_effort,
+)
+from schema_impact.core.registry import Model, Project, Schema
 
 
 @dataclass(frozen=True)
@@ -100,6 +107,7 @@ def _schema_changes(before: Schema, after: Schema) -> list[Change]:
 
 def _model_changes(before: Project, after: Project) -> list[Change]:
     changes: list[Change] = []
+    edited: list[str] = []
     for name, model in before.models.items():
         if name not in after.models:
             changes.append(ModelDropped(name))
@@ -108,7 +116,49 @@ def _model_changes(before: Project, after: Project) -> list[Change]:
         new = _normalized(after.models[name].sql, after.dialect)
         if old != new:
             changes.append(ModelChanged(name))
+            edited.append(name)
+    changes.extend(_model_column_changes(before, after, edited))
     return changes
+
+
+def _model_column_changes(before: Project, after: Project, edited: list[str]) -> list[Change]:
+    """Renamed or dropped output columns of the models whose SQL was edited.
+
+    Only edited models are looked at: a model that was not edited cannot have changed its own
+    columns, and its SQL may no longer resolve against the new schema. For an edited model the
+    new columns are read from its SQL as well as they can be (see output_columns_best_effort).
+    """
+    if not edited:
+        return []
+    outputs = model_outputs(before)
+    # the schema the new SQL is read against: the source tables as they are now, and the output
+    # columns of the models, as they were or, once an edited model has been read, as they are now
+    schema: Schema = {table: dict(columns) for table, columns in after.schema.items()}
+    for name, columns in outputs.items():
+        schema[name] = dict.fromkeys(columns, UNKNOWN_TYPE)
+
+    changes: list[Change] = []
+    for model in _models_in_order(after):
+        if model.name not in edited:
+            continue
+        new_columns = output_columns_best_effort(model.sql, schema, after.dialect)
+        if new_columns is None:
+            continue
+        schema[model.name] = dict.fromkeys(new_columns, UNKNOWN_TYPE)
+        changes.extend(
+            _schema_changes(
+                {model.name: dict.fromkeys(outputs[model.name], UNKNOWN_TYPE)},
+                {model.name: dict.fromkeys(new_columns, UNKNOWN_TYPE)},
+            )
+        )
+    return changes
+
+
+def _models_in_order(project: Project) -> list[Model]:
+    try:
+        return _in_dependency_order(project)
+    except CircularDependencyError:
+        return [project.models[name] for name in sorted(project.models)]
 
 
 def _normalized(sql: str, dialect: str) -> str:

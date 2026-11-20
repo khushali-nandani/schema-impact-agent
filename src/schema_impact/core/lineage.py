@@ -14,6 +14,7 @@ from graphlib import CycleError, TopologicalSorter
 
 import sqlglot
 from sqlglot import exp
+from sqlglot.errors import SqlglotError
 from sqlglot.lineage import Node, lineage
 from sqlglot.optimizer.qualify import qualify
 from sqlglot.optimizer.scope import traverse_scope
@@ -72,6 +73,33 @@ def build_lineage(project: Project) -> list[Edge]:
         schema[model.name] = dict.fromkeys(query.named_selects, UNKNOWN_TYPE)
 
     return edges
+
+
+def model_outputs(project: Project) -> dict[str, list[str]]:
+    """The output columns of every model, in the order they are selected."""
+    schema = {table: dict(columns) for table, columns in project.schema.items()}
+    outputs: dict[str, list[str]] = {}
+    for model in _in_dependency_order(project):
+        columns = list(_qualified(model, schema, project.dialect).named_selects)
+        outputs[model.name] = columns
+        schema[model.name] = dict.fromkeys(columns, UNKNOWN_TYPE)
+    return outputs
+
+
+def output_columns_best_effort(sql: str, schema: Schema, dialect: str) -> list[str] | None:
+    """The output columns of a SELECT, even when it can no longer be fully resolved.
+
+    A model edited by a change may read a column that no longer exists, so qualifying it fails.
+    Then the select list is read as written. None when the columns cannot be known: a `select *`
+    that cannot be expanded.
+    """
+    try:
+        qualified = qualify(sqlglot.parse_one(sql, read=dialect), schema=schema, dialect=dialect)
+        names = list(qualified.named_selects)
+    except SqlglotError:
+        names = list(sqlglot.parse_one(sql, read=dialect).named_selects)
+    # a star that was not expanded (its table is unknown) says nothing about the columns
+    return None if "*" in names else names
 
 
 def _in_dependency_order(project: Project) -> list[Model]:
