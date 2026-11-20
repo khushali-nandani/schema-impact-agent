@@ -12,8 +12,11 @@ from schema_impact.evals.scorer import (
     PREDICTED_NONE,
     PREDICTED_REVIEW,
     Outcome,
+    build_report,
     compute_metrics,
+    format_by_kind,
     format_confusion,
+    format_errors,
     format_report,
     metrics_by_kind,
     predict_case,
@@ -197,6 +200,47 @@ def test_the_confusion_matrix_is_a_table_of_truth_against_prediction():
     assert "| truth \\ predicted | breaking | needs_review | none |" in text
     assert "| silent | 0 | 1 | 1 |" in text
     assert "| breaking | 2 | 0 | 1 |" in text
+
+
+def test_the_by_kind_table_has_one_row_per_kind():
+    mixed = [
+        outcome("breaking", B, kind="seed_rename_column"),
+        outcome("silent", N, kind="model_logic"),
+    ]
+    text = format_by_kind(metrics_by_kind(mixed))
+    assert "| Mutation kind | Pairs | Affected recall | Breaking recall | Silent flagged |" in text
+    assert "| seed_rename_column | 1 | 100.0% (1/1) | 100.0% (1/1) | n/a (0/0) |" in text
+    assert "| model_logic | 1 | 0.0% (0/1) | n/a (0/0) | 0.0% (0/1) |" in text
+
+
+def test_the_error_lists_name_the_cases_and_models_that_went_wrong():
+    outcomes = [
+        outcome("breaking", N, case="c1", model="m1"),
+        outcome("silent", N, case="c1", model="m2"),
+        outcome("safe", R, case="c2", model="m1"),
+        outcome("safe", N, case="c3", model="m1"),
+    ]
+    text = format_errors(outcomes)
+    assert "Missed" in text and "False alarms" in text
+    assert "c1: m1, m2" in text
+    assert "c2: m1" in text
+    assert "c3" not in text  # a correct "safe" is not an error
+
+
+def test_the_error_lists_say_none_when_nothing_went_wrong():
+    text = format_errors([outcome("safe", N), outcome("breaking", B)])
+    assert text.count("none") >= 2
+
+
+def test_a_full_report_has_the_title_counts_and_every_section(before):
+    after = rename_column(before, "orders", "customer_id", "user_id")
+    labels = {"customer_totals": "breaking", "product_sales": "safe", "top_customers": "breaking"}
+    data = dataset(before, case(before, after, labels, case_id="a"))
+    text = build_report(data, score_dataset(data), title="Baseline")
+    assert text.startswith("# Baseline")
+    assert "1 cases, 3 (case, model) pairs" in text
+    for heading in ("## Metrics", "## Confusion matrix", "## By mutation kind", "## Errors"):
+        assert heading in text
 
 
 # --- on the real dataset -----------------------------------------------------
