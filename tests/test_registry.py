@@ -7,7 +7,7 @@ from schema_impact.core.registry import load_project
 
 def test_loads_all_models(toy_project_path):
     project = load_project(toy_project_path)
-    assert set(project.models) == {"customer_totals", "product_sales"}
+    assert set(project.models) == {"customer_totals", "product_sales", "top_customers"}
 
 
 def test_model_keeps_its_sql(toy_project_path):
