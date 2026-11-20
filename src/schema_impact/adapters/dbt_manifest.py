@@ -10,16 +10,17 @@ source tables (seeds and dbt sources) are in `target/catalog.json`, written by
     project = load_dbt_project("path/to/dbt_project")
 
 CSV sources: with dbt-duckdb a source can be a file (`external_location`). dbt compiles it to
-`select * from 'data/orders.csv'`, a table named by its path, and `dbt docs generate` lists no
-columns for it. Such a file is named `<source>__<table>` (e.g. `olist__orders`) in the models,
-and its columns and types are read from the file with DuckDB. That needs the `duckdb` package and
-the CSV files in place.
+`select * from 'data/orders.csv'` (or to a `read_csv(...)` call when the location holds options):
+a table named by its path, whose columns `dbt docs generate` does not list. Such a file is named
+`<source>__<table>` (e.g. `olist__orders`) in the models, and its columns and types are read from
+the file with DuckDB. That needs the `duckdb` package and the CSV files in place.
 
 Limits: ephemeral models are inlined by dbt into their readers and are loaded like any other model.
 Table and column names are used as dbt writes them; no case folding is done.
 """
 
 import json
+import re
 from pathlib import Path
 
 import sqlglot
@@ -36,12 +37,13 @@ def load_dbt_project(project_dir: str | Path, dialect: str = DEFAULT_DIALECT) ->
     target = project_dir / "target"
     manifest = _read_json(target / "manifest.json", "Run `dbt compile` (or `dbt run`) first.")
     catalog = _read_json(target / "catalog.json", "Run `dbt docs generate` first.")
-    csv_sources = _csv_sources(manifest)
+    csv_sources = _csv_sources(manifest, dialect)
     schema = _schema(catalog)
-    for name, path in csv_sources.items():
-        schema[name] = _csv_columns(name, project_dir / path)
+    for name, table in csv_sources.items():
+        schema[name] = _csv_columns(name, table, project_dir, dialect)
+    names = {_table_key(table, dialect): name for name, table in csv_sources.items()}
     return Project(
-        models=_models(manifest, dialect, {path: name for name, path in csv_sources.items()}),
+        models=_models(manifest, dialect, names),
         schema=schema,
         dialect=dialect,
     )
@@ -84,22 +86,42 @@ def _schema(catalog: dict) -> Schema:
     return schema
 
 
-def _csv_sources(manifest: dict) -> dict[str, str]:
-    """Sources that are files: {name used in the models: path of the file}.
+_CSV_CALL = re.compile(r"(?i)read_csv(_auto)?\(")
 
-    dbt gives such a source the file path, in single quotes, as its relation name
-    (`'data/orders.csv'`); a source that is a table has a dotted, double-quoted name instead.
+
+def _csv_sources(manifest: dict, dialect: str) -> dict[str, exp.Table]:
+    """Sources that are files: {name used in the models: the table expression dbt wrote for it}.
+
+    dbt gives such a source its file as the relation name: a path in single quotes
+    (`'data/orders.csv'`) or a call (`read_csv('data/orders.csv', types={...})`). A source that is
+    a table has a dotted, double-quoted name instead.
     """
-    files: dict[str, str] = {}
+    files: dict[str, exp.Table] = {}
     for source in manifest.get("sources", {}).values():
         relation = source.get("relation_name") or ""
-        if len(relation) > 2 and relation[0] == relation[-1] == "'":
-            files[f"{source['source_name']}__{source['name']}"] = relation[1:-1]
+        quoted_path = len(relation) > 2 and relation[0] == relation[-1] == "'"
+        if quoted_path or _CSV_CALL.match(relation):
+            parsed = sqlglot.parse_one(f"SELECT * FROM {relation}", read=dialect)
+            files[f"{source['source_name']}__{source['name']}"] = parsed.find(exp.Table)
     return dict(sorted(files.items()))
 
 
-def _csv_columns(name: str, path: Path) -> dict[str, str]:
-    """Column names and types of a CSV file, in file order, as DuckDB reads them."""
+def _table_key(table: exp.Table, dialect: str) -> str:
+    """The text that identifies a table expression, whatever its alias or schema."""
+    bare = table.copy()
+    for part in ("alias", "db", "catalog"):
+        bare.set(part, None)
+    return bare.sql(dialect=dialect)
+
+
+def _csv_columns(name: str, table: exp.Table, project_dir: Path, dialect: str) -> dict[str, str]:
+    """Column names and types of a CSV source, in file order, as DuckDB reads them.
+
+    Options given in a `read_csv(...)` call count: `types={'price': 'VARCHAR'}` makes it VARCHAR.
+    """
+    literal = table.find(exp.Literal) if isinstance(table.this, exp.ReadCSV) else None
+    relative = literal.this if literal is not None else table.name
+    path = project_dir / relative
     if not path.is_file():
         raise FileNotFoundError(
             f"{path} not found. The source {name} is read from this file, so it must be there."
@@ -110,9 +132,16 @@ def _csv_columns(name: str, path: Path) -> dict[str, str]:
         raise ImportError(
             f"Reading the columns of {path.name} needs duckdb: `uv sync --group bench`."
         ) from error
+
+    if literal is None:
+        query, parameters = "DESCRIBE SELECT * FROM read_csv(?)", [str(path)]
+    else:
+        located = table.copy()
+        located.find(exp.Literal).set("this", str(path))  # the file, wherever we run from
+        query, parameters = f"DESCRIBE SELECT * FROM {located.sql(dialect=dialect)}", []
     connection = duckdb.connect()
     try:
-        rows = connection.execute("DESCRIBE SELECT * FROM read_csv(?)", [str(path)]).fetchall()
+        rows = connection.execute(query, parameters).fetchall()
     finally:
         connection.close()
     return {column: column_type for column, column_type, *_ in rows}
@@ -121,13 +150,14 @@ def _csv_columns(name: str, path: Path) -> dict[str, str]:
 def _without_database_and_schema(sql: str, dialect: str, csv_names: dict[str, str]) -> str:
     """dbt writes "jaffle_shop"."main"."stg_orders"; the rest of the tool knows it as stg_orders.
 
-    A table that is the path of a CSV file gets the name of its source instead.
+    A table that is a CSV file (a path or a `read_csv(...)` call) gets the name of its source.
     The SQL comes back from sqlglot, so keywords are normalised to upper case.
     """
     tree = sqlglot.parse_one(sql, read=dialect)
     for table in tree.find_all(exp.Table):
         table.set("catalog", None)
         table.set("db", None)
-        if table.name in csv_names:
-            table.set("this", exp.to_identifier(csv_names[table.name]))
+        name = csv_names.get(_table_key(table, dialect)) if csv_names else None
+        if name is not None:
+            table.set("this", exp.to_identifier(name))
     return tree.sql(dialect=dialect)
