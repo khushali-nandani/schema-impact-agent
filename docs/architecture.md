@@ -138,11 +138,11 @@ Window `PARTITION BY` / `ORDER BY` columns are `select` edges to the window's ou
 
 ### Change detection and impact (implemented in L1)
 
-`diff_projects(before, after)` lists the changes: `ColumnRenamed`, `ColumnDropped`, `ColumnTypeChanged`, `TableDropped`, `ModelChanged`. `compute_impact(before, changes)` walks the lineage graph from the changed columns and returns the affected models and columns, following chains of models (`orders.amount -> customer_totals.total -> top_customers.total`). Each `Impact` records the roles (select, join, where, ...), the path, and an effect:
+`diff_projects(before, after)` lists the changes: `ColumnRenamed`, `ColumnDropped`, `ColumnTypeChanged`, `TableDropped`, `ModelChanged`, `ModelDropped`. `compute_impact(before, changes)` walks the lineage graph from the changed columns and returns the affected models and columns, following chains of models (`orders.amount -> customer_totals.total -> top_customers.total`). Each `Impact` records the roles (select, join, where, ...), the path, and an effect:
 
 | Change | Effect |
 |---|---|
-| rename, drop, dropped table | `breaking` |
+| rename, drop, dropped table, dropped model | `breaking` |
 | type change, changed model logic | `needs_review` |
 | nothing in the lineage graph depends on it | no impact, i.e. safe |
 
@@ -152,5 +152,6 @@ The effect is deterministic and passes unchanged to every model further down the
 
 - A rename is guessed: one column removed and one added in the same table, at the same position, with the same type.
 - Added columns are ignored (they cannot break anything downstream).
-- A model or table added as a whole is not reported, and a removed *model* is not reported (only dropped tables are), so models that read a deleted model are not flagged yet.
+- Added columns, tables and models are not reported.
+- A dropped table or model is traced only through the columns its readers use. A reader that touches no column, such as `SELECT COUNT(*) FROM order_items`, has no lineage edge and is not flagged. This is a known false negative; a table-level "reads" dependency would fix it.
 - Model logic changes are detected after normalising the SQL, but not described (which filter changed is not extracted).

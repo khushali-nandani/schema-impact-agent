@@ -1,10 +1,9 @@
 """Detect what changed between a "before" and an "after" project.
 
-Detected: renamed / dropped columns, column type changes, dropped tables, and models whose
-SQL changed in a way that is not just formatting.
+Detected: renamed / dropped columns, column type changes, dropped tables, dropped models,
+and models whose SQL changed in a way that is not just formatting.
 
-Not detected: added columns (they cannot break anything downstream), and models or tables
-that were added or removed as a whole model (only dropped tables are reported).
+Not detected: added columns, tables and models (they cannot break anything downstream).
 """
 
 from dataclasses import dataclass
@@ -45,7 +44,14 @@ class ModelChanged:
     model: str
 
 
-Change = ColumnRenamed | ColumnDropped | ColumnTypeChanged | TableDropped | ModelChanged
+@dataclass(frozen=True)
+class ModelDropped:
+    model: str
+
+
+Change = (
+    ColumnRenamed | ColumnDropped | ColumnTypeChanged | TableDropped | ModelChanged | ModelDropped
+)
 
 
 def diff_projects(before: Project, after: Project) -> list[Change]:
@@ -96,6 +102,7 @@ def _model_changes(before: Project, after: Project) -> list[Change]:
     changes: list[Change] = []
     for name, model in before.models.items():
         if name not in after.models:
+            changes.append(ModelDropped(name))
             continue
         old = _normalized(model.sql, before.dialect)
         new = _normalized(after.models[name].sql, after.dialect)
