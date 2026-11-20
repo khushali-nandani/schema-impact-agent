@@ -35,3 +35,7 @@ notes/
 benchmarks/**/target/
 benchmarks/**/logs/
 benchmarks/**/dbt_packages/
+
+# the Olist data is CC BY-NC-SA and must not be committed
+benchmarks/olist/data/*
+!benchmarks/olist/data/.gitkeep
