@@ -1,5 +1,4 @@
-from schema_impact.agent.describe import describe_change, describe_place
-
+from schema_impact.agent.describe import describe_change, describe_path, describe_place
 from schema_impact.core.changes import (
     ColumnDropped,
     ColumnRenamed,
@@ -9,6 +8,7 @@ from schema_impact.core.changes import (
     TableDropped,
 )
 from schema_impact.core.impact import BREAKING, Impact
+from schema_impact.core.lineage import ColumnRef
 
 
 def impact(model: str, column: str | None) -> Impact:
@@ -49,3 +49,21 @@ def test_describe_a_column_place():
 
 def test_describe_a_whole_model_place():
     assert describe_place(impact("customer_totals", None)) == "customer_totals (whole model)"
+
+
+def test_describe_a_path_through_a_chain():
+    chain = Impact(
+        ColumnDropped("orders", "amount"),
+        "top_customers",
+        None,
+        frozenset({"where"}),
+        BREAKING,
+        (
+            ColumnRef("orders", "amount"),
+            ColumnRef("customer_totals", "total"),
+            ColumnRef("top_customers", None),
+        ),
+    )
+    assert describe_path(chain) == (
+        "orders.amount -> customer_totals.total -> top_customers (whole model)"
+    )
