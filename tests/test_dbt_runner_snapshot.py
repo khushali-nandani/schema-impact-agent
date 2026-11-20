@@ -57,7 +57,8 @@ def test_only_the_named_models_are_in_the_snapshot(tmp_path, monkeypatch):
     snapshot = _snapshot(root, ["v"])
     con = duckdb.connect(str(snapshot), read_only=True)
     try:
-        names = {r[0] for r in con.execute("select table_name from information_schema.tables")}
+        tables = con.execute("select table_name from information_schema.tables").fetchall()
+        names = {row[0] for row in tables}
     finally:
         con.close()
     assert names == {"v"}
