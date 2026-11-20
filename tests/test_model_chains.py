@@ -79,3 +79,39 @@ def test_circular_models_raise_a_clear_error(toy_project_path):
     )
     with pytest.raises(CircularDependencyError):
         build_lineage(project)
+
+
+# --- CTE names that look like model names ------------------------------------
+
+
+def test_a_cte_named_like_its_own_model_is_not_a_dependency(toy_project_path):
+    # dbt projects often write: model "orders" = WITH orders AS (SELECT ... FROM stg_orders)
+    project = project_with(
+        toy_project_path,
+        orders="WITH orders AS (SELECT id FROM customers) SELECT id FROM orders",
+    )
+    found = {(e.source, e.target) for e in build_lineage(project) if e.kind == "select"}
+    assert (ColumnRef("customers", "id"), ColumnRef("orders", "id")) in found
+
+
+def test_a_cte_named_like_another_model_is_not_a_dependency(toy_project_path):
+    # a's CTE "b" and b's CTE "a" are local names, not reads of each other
+    project = project_with(
+        toy_project_path,
+        a="WITH b AS (SELECT id FROM customers) SELECT id FROM b",
+        b="WITH a AS (SELECT id FROM orders) SELECT id FROM a",
+    )
+    found = {(e.source, e.target) for e in build_lineage(project) if e.kind == "select"}
+    assert (ColumnRef("customers", "id"), ColumnRef("a", "id")) in found
+    assert (ColumnRef("orders", "id"), ColumnRef("b", "id")) in found
+
+
+def test_a_real_read_of_another_model_still_counts_next_to_a_cte(toy_project_path):
+    project = project_with(
+        toy_project_path,
+        base="SELECT SUM(amount) AS total FROM orders",
+        report="WITH base AS (SELECT 1 AS x) SELECT total FROM base_model",
+        base_model="SELECT total FROM base",
+    )
+    found = {(e.source, e.target) for e in build_lineage(project) if e.kind == "select"}
+    assert (ColumnRef("base_model", "total"), ColumnRef("report", "total")) in found
