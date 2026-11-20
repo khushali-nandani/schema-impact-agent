@@ -13,6 +13,7 @@ import sqlglot
 from sqlglot import exp
 from sqlglot.lineage import Node, lineage
 from sqlglot.optimizer.qualify import qualify
+from sqlglot.optimizer.scope import traverse_scope
 
 from schema_impact.core.registry import Model, Project
 
@@ -73,32 +74,53 @@ def _select_edges(model: Model, project: Project) -> list[Edge]:
     return list(edges)
 
 
+# Which clause of a SELECT a column sits in -> the edge kind it produces
+_CLAUSE_KINDS: dict[type[exp.Expression], str] = {
+    exp.Join: JOIN,
+    exp.Where: WHERE,
+    exp.Group: GROUP_BY,
+}
+
+
 def _clause_edges(model: Model, project: Project) -> list[Edge]:
     """Edges from columns used in JOIN, WHERE and GROUP BY to the whole model.
 
     These columns never reach an output column, yet changing them changes the model.
+    Every SELECT in the query (the main one, CTEs, subqueries) is handled in its own scope,
+    so an alias like "o" can mean different tables in different SELECTs.
+
+    Known limit: a column that comes from a CTE or subquery output (not a real table) is
+    skipped, because it is not traced back to the underlying table.
     """
     query = _qualified(model, project)
-    real_tables = {t.alias_or_name: t.name for t in query.find_all(exp.Table)}
     target = ColumnRef(model.name, None)
-
-    clauses: list[tuple[str, exp.Expression | None]] = [
-        (JOIN, join.args.get("on")) for join in query.args.get("joins", [])
-    ]
-    clauses.append((WHERE, query.args.get("where")))
-    clauses.append((GROUP_BY, query.args.get("group")))
-
     edges: dict[Edge, None] = {}
-    for kind, clause in clauses:
-        if clause is None:
+
+    for scope in traverse_scope(query):
+        select = scope.expression
+        if not isinstance(select, exp.Select):
             continue
-        for column in clause.find_all(exp.Column):
+        real_tables = {
+            alias: source.name
+            for alias, source in scope.sources.items()
+            if isinstance(source, exp.Table)
+        }
+        for column in scope.columns:  # columns of this SELECT only, not of nested ones
+            kind = _clause_kind(column, select)
             table = real_tables.get(column.table)
-            if table is not None:
+            if kind is not None and table is not None:
                 source = ColumnRef(table, column.name)
                 edges[Edge(source=source, target=target, kind=kind)] = None
 
     return list(edges)
+
+
+def _clause_kind(column: exp.Column, select: exp.Select) -> str | None:
+    """Walk up from a column to the clause directly under its SELECT; None if not a clause."""
+    node: exp.Expression = column
+    while node.parent is not None and node.parent is not select:
+        node = node.parent
+    return _CLAUSE_KINDS.get(type(node))
 
 
 def _leaves(node: Node) -> list[Node]:
