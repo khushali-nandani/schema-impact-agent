@@ -1,9 +1,9 @@
 import logging
 
 import pytest
-from schema_impact.agent.checkpoint import allowed_modules, make_checkpointer, review_config
 
 from project_edits import rename_column
+from schema_impact.agent.checkpoint import allowed_modules, make_checkpointer, review_config
 from schema_impact.agent.graph import build_graph
 from schema_impact.agent.judge import LOW, FakeJudge, Judgment
 from schema_impact.agent.state import new_review
