@@ -248,3 +248,13 @@ def test_a_dropped_seed_column_reaches_models_that_never_read_the_staging_column
     impacts = compute_impact(jaffle, [ColumnDropped("raw_payments", "id")])
     assert models(impacts) == {"stg_payments", "customers", "orders"}
     assert {i.effect for i in impacts} == {BREAKING}
+
+
+def test_renaming_the_output_column_of_a_model_breaks_the_models_that_read_it(before):
+    impacts = compute_impact(before, [ColumnRenamed("customer_totals", "name", "customer_name")])
+    assert places(impacts) == {("top_customers", "name")}
+    assert {i.effect for i in impacts} == {BREAKING}
+
+
+def test_dropping_an_output_column_nobody_reads_affects_nothing(before):
+    assert compute_impact(before, [ColumnDropped("top_customers", "name")]) == []

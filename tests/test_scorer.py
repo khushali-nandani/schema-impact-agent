@@ -277,3 +277,21 @@ def test_no_breaking_model_of_the_real_dataset_is_missed_entirely(real_result):
     # "none" for models skipped because a model upstream of them failed
     missed = [o for o in real_result.outcomes if o.truth == "breaking" and o.prediction == N]
     assert missed == []
+
+
+def test_a_renamed_or_dropped_model_column_is_breaking_where_dbt_says_so(real_result):
+    wrong = [
+        o
+        for o in real_result.outcomes
+        if o.kind in ("model_rename_column", "model_drop_column")
+        and o.truth == "breaking"
+        and o.prediction != B
+    ]
+    assert wrong == []
+
+
+def test_the_tool_never_calls_something_breaking_that_is_not(real_result):
+    false_breaking = [
+        o for o in real_result.outcomes if o.prediction == B and o.truth != "breaking"
+    ]
+    assert false_breaking == []

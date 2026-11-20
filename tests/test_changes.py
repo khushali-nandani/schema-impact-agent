@@ -97,3 +97,51 @@ def test_removed_model_is_detected(before):
 def test_added_model_is_not_a_change(before):
     after = add_model(before, "extra", "SELECT id FROM orders")
     assert diff_projects(before, after) == []
+
+
+# --- a model's own output columns --------------------------------------------
+
+TOP = "SELECT name, total FROM customer_totals WHERE total > 1000 ORDER BY total DESC"
+
+
+def test_a_renamed_output_column_of_a_model_is_detected(before):
+    sql = TOP.replace("SELECT name,", "SELECT name AS customer_name,")
+    after = change_model_sql(before, "top_customers", sql)
+    changes = diff_projects(before, after)
+    assert ColumnRenamed("top_customers", "name", "customer_name") in changes
+    assert ModelChanged("top_customers") in changes
+
+
+def test_a_dropped_output_column_of_a_model_is_detected(before):
+    after = change_model_sql(before, "top_customers", "SELECT name FROM customer_totals")
+    assert ColumnDropped("top_customers", "total") in diff_projects(before, after)
+
+
+def test_a_logic_change_that_keeps_the_columns_adds_no_column_change(before):
+    after = change_model_sql(before, "top_customers", TOP.replace("1000", "5000"))
+    assert diff_projects(before, after) == [ModelChanged("top_customers")]
+
+
+def test_the_columns_of_a_select_star_are_known_before_and_after(before):
+    star = add_model(before, "everyone", "SELECT * FROM customers")
+    after = change_model_sql(star, "everyone", "SELECT id, name FROM customers")
+    assert ColumnDropped("everyone", "country") in diff_projects(star, after)
+
+
+def test_a_model_whose_new_sql_no_longer_resolves_is_still_compared(before):
+    # it now reads a column that does not exist; its select list is still readable
+    base = add_model(before, "m", "SELECT id, name FROM customers")
+    after = change_model_sql(base, "m", "SELECT id, nonexistent FROM customers")
+    assert ColumnRenamed("m", "name", "nonexistent") in diff_projects(base, after)
+
+
+def test_an_unresolvable_select_star_gives_only_the_model_change(before):
+    base = add_model(before, "m", "SELECT id FROM customers")
+    after = change_model_sql(base, "m", "SELECT * FROM a_table_that_does_not_exist")
+    assert diff_projects(base, after) == [ModelChanged("m")]
+
+
+def test_a_model_that_was_not_edited_is_not_analysed_against_the_new_schema(before):
+    # customer_totals' SQL reads orders.amount, which is gone: that must not make the diff fail
+    after = drop_column(before, "orders", "amount")
+    assert diff_projects(before, after) == [ColumnDropped("orders", "amount")]
