@@ -9,8 +9,10 @@ from schema_impact.evals.dataset import Dataset, load_dataset
 from schema_impact.evals.llm_eval import (
     JudgedItem,
     apply_judgments,
+    build_judge_report,
     collect_review_items,
     format_comparison,
+    format_judge_errors,
     item_key,
     judge_accuracy,
     judge_items,
@@ -251,3 +253,41 @@ def test_a_judge_that_always_says_low_keeps_only_the_breaking_predictions(real):
     metrics = compute_metrics(apply_judgments(outcomes, answers))
     assert metrics.affected_precision.value == 1.0  # nothing is flagged but breaking models
     assert metrics.affected_recall.numerator == metrics.breaking_recall.numerator
+
+
+# --- the report ---------------------------------------------------------------------
+
+
+def test_the_judge_error_list_names_the_wrong_answers():
+    outcomes = [
+        outcome("c1", "m1", "silent", R),
+        outcome("c2", "m2", "safe", R),
+        outcome("c3", "m3", "safe", R),
+        outcome("c4", "m4", "silent", R),
+    ]
+    answers = [
+        judged("c1", "m1", LOW),  # a silent model judged low: wrong
+        judged("c2", "m2", HIGH),  # a safe model judged high: wrong
+        judged("c3", "m3", LOW),  # right
+        judged("c4", "m4", HIGH),  # right
+    ]
+    text = format_judge_errors(outcomes, answers)
+    assert "Judged low but not safe: 1" in text
+    assert "c1: m1 (silent)" in text
+    assert "Judged high but safe: 1" in text
+    assert "c2: m2" in text
+    assert "c3" not in text and "c4" not in text
+
+
+def test_the_judge_report_names_the_model_and_has_every_section(small):
+    outcomes = score_dataset(small).outcomes
+    items = collect_review_items(small)
+    answers = judge_items(items, FakeJudge(Judgment(HIGH, "a", "b")), progress=lambda line: None)
+    text = build_judge_report(
+        small, outcomes, {"judge_model": "some-model", "generated": "2026-01-01"}, answers
+    )
+    assert "## With the LLM judge" in text
+    assert "some-model" in text
+    assert "3 impacts" in text
+    assert "| Metric | Deterministic | With the judge |" in text
+    assert "### Judged low but not safe" in text
