@@ -101,3 +101,18 @@ def test_a_table_missing_from_one_side_is_an_error_not_a_guess(make):
     before, after = make([T], ["create table other as select 1 as x"])
     with pytest.raises(ValueError, match="t"):
         outputs_changed(before, after, "t")
+
+
+def test_a_view_reads_its_own_database_not_the_other_one(make):
+    # the same view definition in both files must see each file's own table
+    view = "create view v as select id from t"
+    other = "create table t as select * from (values (1, 'a'), (3, 'b')) v(id, name)"
+    before, after = make([T, view], [other, view])
+    assert outputs_changed(before, after, "v") is True
+
+
+def test_views_over_views_are_compared_too(make):
+    chain = ["create view v1 as select id, name from t", "create view v2 as select id from v1"]
+    other = "create table t as select * from (values (1, 'a'), (9, 'b')) v(id, name)"
+    before, after = make([T, *chain], [other, *chain])
+    assert outputs_changed(before, after, "v2") is True
