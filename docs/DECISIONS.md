@@ -49,3 +49,15 @@ A column used only in JOIN, WHERE, GROUP BY, HAVING or ORDER BY does not feed an
 ## 12. Qualify the query first and collect clause edges per SELECT scope
 
 `qualify()` expands `SELECT *` and puts a table alias on every column. Clause edges are then collected per SELECT scope (main query, CTEs, subqueries), so the same alias can mean different tables in different SELECTs. A first version looked only at the top-level SELECT and silently missed filters inside CTEs, which is exactly the silent-breakage case this project exists to catch.
+
+## 13. Models are added to the schema as tables, in dependency order
+
+To resolve a model that reads another model, models are processed in topological order (`graphlib`) and each model's output columns are added to a working copy of the schema. Lineage code stays the same because `qualify()` still gets one schema dict, and `Project.schema` keeps meaning "source tables". Output columns get the type `UNKNOWN`, since lineage only needs names. Cycles raise `CircularDependencyError` instead of crashing.
+
+## 14. Rename detection is a heuristic; added columns are ignored
+
+A diff cannot tell a rename from a drop plus an add. A column is treated as renamed when one column disappears and one appears in the same table at the same position with the same type; otherwise it is a drop. Added columns are not changes because they cannot break downstream models. Model SQL is compared after normalising, so formatting and comments do not count.
+
+## 15. Impact effect is deterministic and does not weaken along a chain
+
+Rename, drop and dropped table are `breaking`; type change and changed logic are `needs_review`. No LLM is needed for the first group: a missing column always fails. Every model further down a chain gets the same effect as the original change. `needs_review` is deliberately left for L2 to judge. Impact is computed on the "before" project, because its SQL is what refers to the old columns.
