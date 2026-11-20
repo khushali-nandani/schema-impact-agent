@@ -13,8 +13,9 @@ This folder is a copy of the dbt project [`dbt-labs/jaffle_shop_duckdb`](https:/
 
 ## What was copied
 
-The dbt project files only: `dbt_project.yml`, `profiles.yml`, `models/`, `seeds/` and `LICENSE`.
-Documentation, images, the Dockerfile and Python packaging files were left out.
+The dbt project itself: `dbt_project.yml`, `profiles.yml`, `LICENSE`, and every file under `models/`
+(including the `.md` doc blocks that `schema.yml` refers to) and `seeds/`. The README, images, the Dockerfile
+and the Python packaging files were left out.
 
 ## Changes
 
