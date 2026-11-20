@@ -1,3 +1,5 @@
+from pathlib import Path
+
 import pytest
 
 from project_edits import (
@@ -10,6 +12,7 @@ from project_edits import (
     drop_table,
     rename_column,
 )
+from schema_impact.adapters.dbt_manifest import load_dbt_project
 from schema_impact.core.changes import (
     ColumnDropped,
     ColumnRenamed,
@@ -107,9 +110,8 @@ TOP = "SELECT name, total FROM customer_totals WHERE total > 1000 ORDER BY total
 def test_a_renamed_output_column_of_a_model_is_detected(before):
     sql = TOP.replace("SELECT name,", "SELECT name AS customer_name,")
     after = change_model_sql(before, "top_customers", sql)
-    changes = diff_projects(before, after)
-    assert ColumnRenamed("top_customers", "name", "customer_name") in changes
-    assert ModelChanged("top_customers") in changes
+    # only the shape of the output changed: nothing else in the query, so no "model changed"
+    assert diff_projects(before, after) == [ColumnRenamed("top_customers", "name", "customer_name")]
 
 
 def test_a_dropped_output_column_of_a_model_is_detected(before):
@@ -145,3 +147,82 @@ def test_a_model_that_was_not_edited_is_not_analysed_against_the_new_schema(befo
     # customer_totals' SQL reads orders.amount, which is gone: that must not make the diff fail
     after = drop_column(before, "orders", "amount")
     assert diff_projects(before, after) == [ColumnDropped("orders", "amount")]
+
+
+# --- an edit that only changes the shape of the output ------------------------
+
+FROM_WHERE = "FROM customer_totals WHERE total > 1000 ORDER BY total DESC"
+
+
+def edit_top(before, projections: str):
+    return change_model_sql(before, "top_customers", f"SELECT {projections} {FROM_WHERE}")
+
+
+def test_dropping_an_output_column_and_nothing_else_is_only_a_column_change(before):
+    after = edit_top(before, "name")
+    assert diff_projects(before, after) == [ColumnDropped("top_customers", "total")]
+
+
+def test_adding_an_output_column_is_not_a_change(before):
+    assert diff_projects(before, edit_top(before, "name, total, 1 AS one")) == []
+
+
+def test_reordering_the_output_columns_is_not_a_change(before):
+    assert diff_projects(before, edit_top(before, "total, name")) == []
+
+
+def test_changing_how_a_column_is_computed_is_a_model_change(before):
+    assert diff_projects(before, edit_top(before, "name, total * 2 AS total")) == [
+        ModelChanged("top_customers")
+    ]
+
+
+def test_renaming_a_column_and_changing_its_definition_is_both(before):
+    after = edit_top(before, "name AS n, total * 2 AS total")
+    changes = diff_projects(before, after)
+    assert ModelChanged("top_customers") in changes
+    assert ColumnRenamed("top_customers", "name", "n") in changes
+
+
+def test_changing_the_filter_as_well_is_a_model_change_too(before):
+    sql = "SELECT name AS n, total FROM customer_totals WHERE total > 5 ORDER BY total DESC"
+    after = change_model_sql(before, "top_customers", sql)
+    changes = diff_projects(before, after)
+    assert ModelChanged("top_customers") in changes
+    assert ColumnRenamed("top_customers", "name", "n") in changes
+
+
+def test_a_new_sql_that_no_longer_resolves_is_a_model_change_as_well(before):
+    base = add_model(before, "m", "SELECT id, name FROM customers")
+    after = change_model_sql(base, "m", "SELECT id, nonexistent FROM customers")
+    changes = diff_projects(base, after)
+    assert ModelChanged("m") in changes
+    assert ColumnRenamed("m", "name", "nonexistent") in changes
+
+
+def test_on_a_real_dbt_model_a_rewritten_select_list_is_only_a_column_change():
+    # the compiled SQL of stg_orders ends in SELECT * FROM "renamed"
+    jaffle = load_dbt_project(Path(__file__).parent / "fixtures" / "jaffle_shop_dbt")
+    sql = jaffle.models["stg_orders"].sql
+    assert sql.endswith('SELECT * FROM "renamed"')
+    after = change_model_sql(
+        jaffle,
+        "stg_orders",
+        sql.replace(
+            'SELECT * FROM "renamed"',
+            'SELECT order_id, customer_id AS customer_id_v2, order_date, status FROM "renamed"',
+        ),
+    )
+    assert diff_projects(jaffle, after) == [
+        ColumnRenamed("stg_orders", "customer_id", "customer_id_v2")
+    ]
+
+
+def test_on_a_real_dbt_model_a_changed_definition_inside_a_cte_is_still_a_model_change():
+    jaffle = load_dbt_project(Path(__file__).parent / "fixtures" / "jaffle_shop_dbt")
+    sql = jaffle.models["stg_orders"].sql
+    assert "status" in sql
+    after = change_model_sql(
+        jaffle, "stg_orders", sql.replace("status", "UPPER(status) AS status", 1)
+    )
+    assert diff_projects(jaffle, after) == [ModelChanged("stg_orders")]

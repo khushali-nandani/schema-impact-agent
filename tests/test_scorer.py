@@ -315,3 +315,21 @@ def test_the_tool_never_calls_something_breaking_that_is_not(real_result):
         o for o in real_result.outcomes if o.prediction == B and o.truth != "breaking"
     ]
     assert false_breaking == []
+
+
+def test_a_renamed_or_dropped_model_column_raises_no_false_alarm(real_result):
+    # the models that do not read the column used to be flagged "needs_review" because the whole
+    # model counted as changed
+    alarms = [
+        o
+        for o in real_result.outcomes
+        if o.kind in ("model_rename_column", "model_drop_column")
+        and o.truth == "safe"
+        and o.prediction != N
+    ]
+    assert alarms == []
+
+
+def test_every_silent_model_of_the_real_dataset_is_still_flagged(real_result):
+    silent_missed = [o for o in real_result.outcomes if o.truth == "silent" and o.prediction == N]
+    assert silent_missed == []
