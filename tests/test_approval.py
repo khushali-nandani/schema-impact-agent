@@ -1,8 +1,8 @@
 import pytest
 from langgraph.types import Command
-from schema_impact.agent.checkpoint import make_checkpointer, review_config
 
 from project_edits import change_type, drop_column, rename_column
+from schema_impact.agent.checkpoint import make_checkpointer, review_config
 from schema_impact.agent.graph import build_graph
 from schema_impact.agent.judge import HIGH, LOW, FakeJudge, Judgment
 from schema_impact.agent.nodes import report_node

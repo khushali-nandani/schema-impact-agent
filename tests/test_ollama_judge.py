@@ -2,12 +2,12 @@ import json
 from types import SimpleNamespace
 
 import pytest
-from schema_impact.agent.ollama_judge import OllamaJudge
 
 from project_edits import change_type
 from schema_impact.agent.checkpoint import review_config
 from schema_impact.agent.graph import build_graph
 from schema_impact.agent.judge import HIGH, LOW, Judge, Judgment
+from schema_impact.agent.ollama_judge import OllamaJudge
 from schema_impact.agent.state import new_review
 from schema_impact.core.changes import ColumnTypeChanged
 from schema_impact.core.impact import NEEDS_REVIEW, Impact
