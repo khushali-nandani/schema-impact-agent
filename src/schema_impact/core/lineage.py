@@ -17,7 +17,7 @@ from sqlglot import exp
 from sqlglot.errors import SqlglotError
 from sqlglot.lineage import Node, lineage
 from sqlglot.optimizer.qualify import qualify
-from sqlglot.optimizer.scope import traverse_scope
+from sqlglot.optimizer.scope import Scope, traverse_scope
 
 from schema_impact.core.registry import Model, Project, Schema
 
@@ -167,27 +167,27 @@ def _clause_edges(model: Model, query: exp.Expression) -> list[Edge]:
     Every SELECT in the query (the main one, CTEs, subqueries) is handled in its own scope,
     so an alias like "o" can mean different tables in different SELECTs.
 
-    Known limit: a column that comes from a CTE or subquery output (not a real table) is
-    skipped, because it is not traced back to the underlying table.
+    A column that comes from a CTE or a subquery rather than a real table is traced back, through
+    as many CTEs as it takes, to the table columns it is defined from. (dbt models are chains of
+    CTEs, so most clause columns are of this kind.)
+
+    Known limit: a CTE that is a UNION is not traced.
     """
     target = ColumnRef(model.name, None)
     edges: dict[Edge, None] = {}
+
+    def add(sources: list[ColumnRef], kind: str) -> None:
+        for source in sources:
+            edges[Edge(source=source, target=target, kind=kind)] = None
 
     for scope in traverse_scope(query):
         select = scope.expression
         if not isinstance(select, exp.Select):
             continue
-        real_tables = {
-            alias: source.name
-            for alias, source in scope.sources.items()
-            if isinstance(source, exp.Table)
-        }
         for column in scope.columns:  # columns of this SELECT only, not of nested ones
             kind = _clause_kind(column, select)
-            table = real_tables.get(column.table)
-            if kind is not None and table is not None:
-                source = ColumnRef(table, column.name)
-                edges[Edge(source=source, target=target, kind=kind)] = None
+            if kind is not None:
+                add(_base_columns(column, scope), kind)
 
         # GROUP BY / HAVING / ORDER BY may name an output alias (ORDER BY total). Such a
         # reference has no table, so follow it back to the expression that defines it.
@@ -202,12 +202,30 @@ def _clause_edges(model: Model, query: exp.Expression) -> list[Edge]:
                 if ref.table or projection is None:
                     continue
                 for inner in projection.find_all(exp.Column):
-                    table = real_tables.get(inner.table)
-                    if table is not None:
-                        source = ColumnRef(table, inner.name)
-                        edges[Edge(source=source, target=target, kind=kind)] = None
+                    add(_base_columns(inner, scope), kind)
 
     return list(edges)
+
+
+def _base_columns(column: exp.Column, scope: Scope) -> list[ColumnRef]:
+    """The real table (or model) columns that `column` is made from.
+
+    A column of a real table is itself. A column of a CTE or subquery is the columns used in the
+    expression that defines it there, followed down the same way until real tables are reached.
+    """
+    source = scope.sources.get(column.table)
+    if isinstance(source, exp.Table):
+        return [ColumnRef(source.name, column.name)]
+    if not isinstance(source, Scope) or not isinstance(source.expression, exp.Select):
+        return []  # an unknown alias, or a CTE that is a UNION
+    for projection in source.expression.selects:
+        if projection.alias_or_name == column.name:
+            return [
+                base
+                for inner in projection.find_all(exp.Column)
+                for base in _base_columns(inner, source)
+            ]
+    return []
 
 
 def _clause_kind(column: exp.Column, select: exp.Select) -> str | None:
