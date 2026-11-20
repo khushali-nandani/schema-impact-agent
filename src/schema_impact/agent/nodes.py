@@ -8,6 +8,8 @@ model.
 from collections.abc import Callable
 from typing import Any
 
+from langgraph.types import interrupt
+
 from schema_impact.agent.describe import (
     breaking_explanation,
     breaking_fix,
@@ -53,6 +55,23 @@ def make_classify_risk_node(judge: Judge) -> Callable[[ReviewState], Update]:
     return classify_risk
 
 
+def human_approval_node(state: ReviewState) -> Update:
+    """Pause until a human decides. Resume with Command(resume=True) or Command(resume=False).
+
+    When the graph resumes, this node runs again from the top, so nothing that has a side
+    effect (such as asking a model) may happen before interrupt().
+    """
+    high_risk = [describe_place(v.impact) for v in state["judgments"] if v.judgment.risk == HIGH]
+    answer = interrupt(
+        {
+            "question": "This change has high-risk impacts. Approve it?",
+            "changes": [describe_change(change) for change in state["changes"]],
+            "high_risk": high_risk,
+        }
+    )
+    return {"approved": bool(answer)}
+
+
 def report_node(state: ReviewState) -> Update:
     judgments = {v.impact: v.judgment for v in state["judgments"]}
     impacts = state["impacts"]
@@ -80,4 +99,6 @@ def report_node(state: ReviewState) -> Update:
         "## Summary",
         f"{breaking} breaking, {review} needs review. Approval required: {approval}.",
     ]
+    if state["approved"] is not None:
+        lines.append(f"Decision: {'approved' if state['approved'] else 'rejected'}")
     return {"report": "\n".join(lines)}
