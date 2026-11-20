@@ -270,3 +270,10 @@ def test_scoring_is_deterministic(real_dataset):
         real_dataset.meta, {}, real_dataset.baseline_project, real_dataset.cases[:10]
     )
     assert score_dataset(first_ten) == score_dataset(first_ten)
+
+
+def test_no_breaking_model_of_the_real_dataset_is_missed_entirely(real_result):
+    # a model that dbt could not build must at least be flagged: the tool used to predict
+    # "none" for models skipped because a model upstream of them failed
+    missed = [o for o in real_result.outcomes if o.truth == "breaking" and o.prediction == N]
+    assert missed == []
