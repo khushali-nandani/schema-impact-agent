@@ -471,7 +471,13 @@ def _apply_source_change_type(params: dict, root: Path) -> None:
             break  # the next table or the end of this one
         if line.strip().startswith("meta:"):
             raise MutationError(f"Table {table} in {params['yaml']} already has its own meta")
-    call = f"read_csv('{params['path']}', types={{'{params['column']}': '{params['new_type']}'}})"
+    column = params["column"]
+    if not re.fullmatch(r"\w+", column):
+        raise MutationError(f"Column {column!r} is not a plain identifier")
+    # no braces: dbt renders the location as Jinja and then formats it with str.format_map, and
+    # both would take {'price': ...} for something to fill in
+    types = f"struct_pack({column} := '{params['new_type']}')"
+    call = f"read_csv('{params['path']}', types={types})"
     added = f'{indent}  meta:\n{indent}    external_location: "{call}"\n'
     path.write_text(text[: found[0].end()] + added + text[found[0].end() :])
 
