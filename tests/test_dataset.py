@@ -156,3 +156,83 @@ def test_changed_baseline_statuses_are_not_mixed_with_old_cases(tmp_path):
     path.write_text(json.dumps(data))
     with pytest.raises(ValueError, match="different project"):
         build(tmp_path, FakeRunner(), [mutation(0), mutation(1)])
+
+
+# --- the data files the labels depend on -------------------------------------------
+#
+# A label says what dbt did with the project's own data, so a dataset is only meaningful for that
+# data. The file records a hash of every file in the project's data/ folder, and a build refuses
+# to go on if the data is not the one it started with.
+
+
+def sha256(content: bytes) -> str:
+    import hashlib
+
+    return hashlib.sha256(content).hexdigest()
+
+
+def project_with_data(tmp_path, files: dict[str, bytes]) -> Path:
+    root = tmp_path / "project"
+    (root / "data").mkdir(parents=True)
+    for name, content in files.items():
+        (root / "data" / name).write_bytes(content)
+    return root
+
+
+def test_the_file_records_a_hash_of_every_data_file(tmp_path):
+    project_with_data(tmp_path, {"a.csv": b"x,y\n1,2\n", "b.csv": b"z\n3\n"})
+    build(tmp_path, FakeRunner(), [mutation(0)])
+    meta = load_dataset(tmp_path / "out" / "dataset.json").meta
+    assert meta["data_files"] == {"a.csv": sha256(b"x,y\n1,2\n"), "b.csv": sha256(b"z\n3\n")}
+
+
+def test_a_project_without_a_data_folder_records_no_data_files(tmp_path):
+    build(tmp_path, FakeRunner(), [mutation(0)])
+    assert load_dataset(tmp_path / "out" / "dataset.json").meta["data_files"] == {}
+
+
+def test_a_build_goes_on_when_the_data_is_the_same(tmp_path):
+    root = project_with_data(tmp_path, {"a.csv": b"x\n1\n"})
+    mutations = [mutation(n) for n in range(3)]
+    build(tmp_path, FakeRunner(), mutations, limit=1)
+    second = FakeRunner()
+    build(tmp_path, second, mutations)
+    assert second.cases == [m.id for m in mutations[1:]]
+    assert (root / "data" / "a.csv").read_bytes() == b"x\n1\n"
+
+
+def test_a_build_refuses_to_go_on_with_different_data(tmp_path):
+    root = project_with_data(tmp_path, {"a.csv": b"x\n1\n"})
+    mutations = [mutation(n) for n in range(3)]
+    build(tmp_path, FakeRunner(), mutations, limit=1)
+    (root / "data" / "a.csv").write_bytes(b"x\n2\n")
+    with pytest.raises(ValueError, match="data"):
+        build(tmp_path, FakeRunner(), mutations)
+
+
+def test_a_build_stops_when_a_case_changes_the_original_data(tmp_path):
+    root = project_with_data(tmp_path, {"a.csv": b"x\n1\n"})
+
+    class Careless(FakeRunner):
+        def case(self, project_dir, baseline, mutation, workdir):
+            (root / "data" / "a.csv").write_bytes(b"x\n999\n")  # writes through to the original
+            return super().case(project_dir, baseline, mutation, workdir)
+
+    runner = Careless()
+    with pytest.raises(ValueError, match="changed"):
+        build(tmp_path, runner, [mutation(n) for n in range(3)])
+    assert len(runner.cases) == 1  # it did not go on to the next one
+
+
+def test_a_dataset_without_data_hashes_can_still_be_resumed(tmp_path):
+    """The jaffle_shop file was written before hashes were recorded."""
+    mutations = [mutation(n) for n in range(3)]
+    build(tmp_path, FakeRunner(), mutations, limit=1)
+    path = tmp_path / "out" / "dataset.json"
+    data = json.loads(path.read_text())
+    del data["meta"]["data_files"]
+    path.write_text(json.dumps(data))
+    project_with_data(tmp_path, {"a.csv": b"x\n1\n"})
+    second = FakeRunner()
+    build(tmp_path, second, mutations)
+    assert second.cases == [m.id for m in mutations[1:]]
