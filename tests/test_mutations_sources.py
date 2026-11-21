@@ -230,6 +230,12 @@ def olist(tmp_path) -> Path:
         "order_id,order_item_id,product_id,seller_id,shipping_limit_date,price,freight_value\n"
         "o1,1,p1,s1,2020-01-03 10:00:00,12.5,2.0\n"
     )
+    for model in (
+        "models/staging/stg_olist__orders.sql",
+        "models/staging/stg_olist__order_items.sql",
+        "models/intermediate/int_order_items_aggregated.sql",
+    ):  # only the sources are mutated here; the models just have to exist
+        write(root / model, b"select 1 as x\n")
     write(root / "data" / "olist_orders_dataset.csv", orders.encode())
     write(root / "data" / "olist_order_items_dataset.csv", items.encode())
     return root

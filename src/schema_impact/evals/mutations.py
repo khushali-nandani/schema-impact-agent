@@ -9,6 +9,8 @@ project to find out.
 Kinds:
 - seed_rename_column / seed_drop_column  edit a seed's CSV
 - seed_change_type                       write a seed properties file with a new column type
+- source_rename_column / source_drop_column  edit a CSV file that a dbt-duckdb source reads
+- source_change_type                     read one column of such a file as varchar (read_csv types)
 - model_rename_column / model_drop_column  rewrite the model's final `select * from <cte>`
 - model_logic                            a hand-written text replacement (see `Recipe`)
 
@@ -23,7 +25,7 @@ import csv
 import json
 import os
 import re
-from collections.abc import Callable, Sequence
+from collections.abc import Callable, Iterable, Iterator, Sequence
 from dataclasses import dataclass
 from pathlib import Path
 from typing import Any
@@ -31,6 +33,9 @@ from typing import Any
 SEED_RENAME_COLUMN = "seed_rename_column"
 SEED_DROP_COLUMN = "seed_drop_column"
 SEED_CHANGE_TYPE = "seed_change_type"
+SOURCE_RENAME_COLUMN = "source_rename_column"
+SOURCE_DROP_COLUMN = "source_drop_column"
+SOURCE_CHANGE_TYPE = "source_change_type"
 MODEL_RENAME_COLUMN = "model_rename_column"
 MODEL_DROP_COLUMN = "model_drop_column"
 MODEL_LOGIC = "model_logic"
@@ -103,6 +108,19 @@ def generate_mutations(project_dir: str | Path, recipes: Sequence[Recipe] = ()) 
             if column_type.upper() not in _TEXT_TYPES:
                 mutations.append(_seed_change_type(name, column))
 
+    sources = _read_sources(root)
+    for name, source in sources.items():
+        for column, _ in source["columns"]:
+            mutations.append(_source_rename(name, source["path"], column))
+    for name, source in sources.items():
+        if len(source["columns"]) > 1:
+            for column, _ in source["columns"]:
+                mutations.append(_source_drop(name, source["path"], column))
+    for name, source in sources.items():
+        for column, column_type in source["columns"]:
+            if column_type.upper() not in _TEXT_TYPES:
+                mutations.append(_source_change_type(name, source, column))
+
     shaped = {
         name: model
         for name, model in sorted(models.items())
@@ -144,6 +162,71 @@ def _read_artifacts(root: Path) -> tuple[dict[str, dict], dict[str, dict]]:
                 "columns": [name for name, _ in columns],
             }
     return seeds, models
+
+
+def _read_sources(root: Path) -> dict[str, dict]:
+    """The sources that are CSV files read by path: name -> where the file is and its columns.
+
+    The name is the one the adapter gives the source (`olist__orders`). Columns and types are
+    read from the file, since dbt does not catalog such a source.
+    """
+    manifest = json.loads((root / "target" / "manifest.json").read_text())
+    files: dict[str, dict] = {}
+    for node in manifest.get("sources", {}).values():
+        relation = node.get("relation_name") or ""
+        if len(relation) > 2 and relation[0] == relation[-1] == "'":
+            files[f"{node['source_name']}__{node['name']}"] = {
+                "path": relation[1:-1],
+                "yaml": node["original_file_path"],
+                "source": node["source_name"],
+                "table": node["name"],
+            }
+    if not files:
+        return {}
+    from schema_impact.adapters.dbt_manifest import load_dbt_project  # needs duckdb
+
+    schema = load_dbt_project(root).schema
+    for name, source in files.items():
+        source["columns"] = list(schema[name].items())
+    return dict(sorted(files.items()))
+
+
+def _source_rename(source: str, path: str, column: str) -> Mutation:
+    new_name = f"{column}_v2"
+    return Mutation(
+        id=f"{SOURCE_RENAME_COLUMN}:{source}.{column}",
+        kind=SOURCE_RENAME_COLUMN,
+        target=f"{source}.{column}",
+        description=f"Rename column {column} of source {source} to {new_name}",
+        params={"path": path, "column": column, "new_name": new_name},
+    )
+
+
+def _source_drop(source: str, path: str, column: str) -> Mutation:
+    return Mutation(
+        id=f"{SOURCE_DROP_COLUMN}:{source}.{column}",
+        kind=SOURCE_DROP_COLUMN,
+        target=f"{source}.{column}",
+        description=f"Drop column {column} of source {source}",
+        params={"path": path, "column": column},
+    )
+
+
+def _source_change_type(name: str, source: dict, column: str) -> Mutation:
+    return Mutation(
+        id=f"{SOURCE_CHANGE_TYPE}:{name}.{column}",
+        kind=SOURCE_CHANGE_TYPE,
+        target=f"{name}.{column}",
+        description=f"Read column {column} of source {name} as varchar",
+        params={
+            "yaml": source["yaml"],
+            "source": source["source"],
+            "table": source["table"],
+            "path": source["path"],
+            "column": column,
+            "new_type": "VARCHAR",
+        },
+    )
 
 
 def _seed_rename(seed: str, path: str, column: str) -> Mutation:
@@ -282,6 +365,117 @@ def _apply_seed_change_type(params: dict, root: Path) -> None:
     )
 
 
+# One field of a CSV file as written (quoted or not), then what follows it: a comma, the end of
+# the row or the end of the file. Nothing is unquoted or re-quoted, so what is not changed stays
+# byte for byte as it was.
+_CSV_FIELD = re.compile(r'("[^"]*(?:""[^"]*)*"|[^,"\r\n]*)(,|\r\n|\n|\r|$)')
+
+
+def _split_csv(text: str, where: Path) -> Iterator[tuple[list[str], str]]:
+    """Rows of a CSV text as (fields exactly as written, the line ending that ends the row)."""
+    position, fields = 0, []
+    while position < len(text):
+        match = _CSV_FIELD.match(text, position)
+        if match is None or match.end() == position:
+            raise MutationError(f"Cannot split {where} into fields at character {position}")
+        fields.append(match[1])
+        position = match.end()
+        if match[2] != ",":
+            yield fields, match[2]
+            fields = []
+    if fields:  # the text ends with a comma: one more, empty, field
+        yield [*fields, ""], ""
+
+
+def _field_value(raw: str) -> str:
+    """The value of a field as written: without its quotes and a leading byte order mark."""
+    raw = raw.lstrip("\ufeff")
+    return raw[1:-1].replace('""', '"') if raw.startswith('"') else raw
+
+
+def _read_text(path: Path) -> str:
+    with path.open(encoding="utf-8", newline="") as handle:
+        return handle.read()
+
+
+def _replace_text(path: Path, text: str) -> None:
+    """Write `text` as the new content of `path` by replacing the file (see `_write_csv`)."""
+    temporary = path.with_name(f".{path.name}.tmp")
+    with temporary.open("w", encoding="utf-8", newline="") as handle:
+        handle.write(text)
+    os.replace(temporary, path)
+
+
+def _header_of(text: str, path: Path) -> tuple[list[str], str]:
+    header = next(_split_csv(text, path), None)
+    if header is None:
+        raise MutationError(f"{path} is empty")
+    return header
+
+
+def _apply_source_rename(params: dict, root: Path) -> None:
+    path = root / params["path"]
+    text = _read_text(path)
+    fields, ending = _header_of(text, path)
+    index = _column_index([_field_value(f) for f in fields], params["column"], path)
+    header_length = len(",".join(fields)) + len(ending)
+    raw = fields[index]
+    bom = "\ufeff" if raw.startswith("\ufeff") else ""
+    new_name = params["new_name"]
+    fields[index] = bom + (f'"{new_name}"' if raw[len(bom) :].startswith('"') else new_name)
+    _replace_text(path, ",".join(fields) + ending + text[header_length:])
+
+
+def _rewrite_csv(path: Path, drop: Iterable[str]) -> None:
+    """Rewrite a CSV file without the columns named in `drop`, every other field as written.
+
+    With nothing to drop the file comes out byte for byte the same.
+    """
+    names_to_drop = set(drop)
+    text = _read_text(path)
+    rows = _split_csv(text, path)
+    header = next(rows, None)
+    if header is None:
+        raise MutationError(f"{path} is empty")
+    names = [_field_value(f) for f in header[0]]
+    for name in names_to_drop - set(names):
+        raise MutationError(f"Column {name} not found in the header of {path}")
+    gone = {i for i, name in enumerate(names) if name in names_to_drop}
+
+    temporary = path.with_name(f".{path.name}.tmp")
+    with temporary.open("w", encoding="utf-8", newline="") as handle:
+        for fields, ending in [header, *rows]:
+            handle.write(",".join(f for i, f in enumerate(fields) if i not in gone) + ending)
+    os.replace(temporary, path)
+
+
+def _apply_source_drop(params: dict, root: Path) -> None:
+    _rewrite_csv(root / params["path"], {params["column"]})
+
+
+def _apply_source_change_type(params: dict, root: Path) -> None:
+    """Give the table its own `external_location`: a read_csv call with the column's type."""
+    path = root / params["yaml"]
+    text = path.read_text()
+    table = params["table"]
+    heading = re.compile(rf"(?m)^(?P<indent> *)- name: {re.escape(table)}[ \t]*\n")
+    found = list(heading.finditer(text))
+    if len(found) != 1:
+        raise MutationError(
+            f"Expected one table named {table} in {params['yaml']}, found {len(found)}"
+            + (" (nothing to edit)" if not found else "")
+        )
+    indent = found[0]["indent"]
+    for line in text[found[0].end() :].splitlines():
+        if line.strip() and len(line) - len(line.lstrip()) < len(indent) + 2:
+            break  # the next table or the end of this one
+        if line.strip().startswith("meta:"):
+            raise MutationError(f"Table {table} in {params['yaml']} already has its own meta")
+    call = f"read_csv('{params['path']}', types={{'{params['column']}': '{params['new_type']}'}})"
+    added = f'{indent}  meta:\n{indent}    external_location: "{call}"\n'
+    path.write_text(text[: found[0].end()] + added + text[found[0].end() :])
+
+
 def _final_select(path: Path) -> tuple[str, re.Match[str]]:
     text = path.read_text()
     match = _FINAL_STAR_SELECT.search(text)
@@ -330,6 +524,9 @@ _APPLIERS: dict[str, Callable[[dict, Path], None]] = {
     SEED_RENAME_COLUMN: _apply_seed_rename,
     SEED_DROP_COLUMN: _apply_seed_drop,
     SEED_CHANGE_TYPE: _apply_seed_change_type,
+    SOURCE_RENAME_COLUMN: _apply_source_rename,
+    SOURCE_DROP_COLUMN: _apply_source_drop,
+    SOURCE_CHANGE_TYPE: _apply_source_change_type,
     MODEL_RENAME_COLUMN: _apply_model_rename,
     MODEL_DROP_COLUMN: _apply_model_drop,
     MODEL_LOGIC: _apply_model_logic,
