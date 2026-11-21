@@ -31,12 +31,22 @@ from schema_impact.core.registry import DEFAULT_DIALECT, Model, Project, Schema
 _SOURCE_PREFIXES = ("seed.", "source.")
 
 
-def load_dbt_project(project_dir: str | Path, dialect: str = DEFAULT_DIALECT) -> Project:
-    """Read models (compiled SQL) and source tables (columns) from a dbt project's target/."""
+def load_dbt_project(
+    project_dir: str | Path,
+    dialect: str = DEFAULT_DIALECT,
+    catalog_from: str | Path | None = None,
+) -> Project:
+    """Read models (compiled SQL) and source tables (columns) from a dbt project's target/.
+
+    `catalog_from` is another project folder whose catalog.json is read instead. `dbt compile`
+    writes a manifest but no catalog, and the source tables of a pull request are not changed by
+    it, so the catalog of the base can stand in for the one the head does not have.
+    """
     project_dir = Path(project_dir)
     target = project_dir / "target"
     manifest = _read_json(target / "manifest.json", "Run `dbt compile` (or `dbt run`) first.")
-    catalog = _read_json(target / "catalog.json", "Run `dbt docs generate` first.")
+    catalog_target = Path(catalog_from) / "target" if catalog_from else target
+    catalog = _read_json(catalog_target / "catalog.json", "Run `dbt docs generate` first.")
     csv_sources = _csv_sources(manifest, dialect)
     schema = _schema(catalog)
     for name, table in csv_sources.items():

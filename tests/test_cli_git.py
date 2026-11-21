@@ -90,7 +90,7 @@ def test_a_branch_or_a_relative_ref_works(capsys, repo):
     assert "customers.name" in out
 
 
-def test_the_whole_history_is_the_sum_of_both_changes(capsys, repo):
+def test_a_range_of_commits_reports_the_changes_of_all_of_them(capsys, repo):
     code, out, _ = run(
         capsys,
         "diff",
@@ -105,7 +105,9 @@ def test_the_whole_history_is_the_sum_of_both_changes(capsys, repo):
     )
     kinds = {c["kind"] for c in json.loads(out)["changes"]}
     assert code == 0
-    assert kinds == {"ColumnLogicChanged", "ColumnDropped"}
+    # the edited model reads the column that was dropped, so its new SQL does not resolve and the
+    # whole model is reported as changed instead of one column
+    assert kinds == {"ModelChanged", "ColumnDropped"}
 
 
 def test_the_repository_defaults_to_the_current_folder(capsys, repo, monkeypatch):
