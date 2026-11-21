@@ -1,0 +1,12 @@
+diff --git a/schema.sql b/schema.sql
+index 5ff6fac..3833996 100644
+--- a/schema.sql
++++ b/schema.sql
+@@ -3,7 +3,6 @@
+ 
+ CREATE TABLE customers (
+     id      INTEGER,
+-    name    VARCHAR,
+     country VARCHAR
+ );
+ 

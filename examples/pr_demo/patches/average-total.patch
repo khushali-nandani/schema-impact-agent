@@ -1,0 +1,12 @@
+diff --git a/models/customer_totals.sql b/models/customer_totals.sql
+index d8e22d8..f2b04f5 100644
+--- a/models/customer_totals.sql
++++ b/models/customer_totals.sql
+@@ -1,6 +1,6 @@
+ SELECT
+     c.name,
+-    SUM(o.amount) AS total
++    AVG(o.amount) AS total
+ FROM orders AS o
+ JOIN customers AS c ON o.customer_id = c.id
+ GROUP BY c.name
