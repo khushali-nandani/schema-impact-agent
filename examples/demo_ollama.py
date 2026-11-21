@@ -5,8 +5,9 @@ Needs Ollama running and the model pulled first:
     ollama pull qwen2.5-coder:7b
     uv run python examples/demo_ollama.py
 
-The change: orders.amount goes from DECIMAL to VARCHAR. Nothing fails, but customer_totals sums
-that column, so the numbers may silently change. That is the kind of impact the model judges.
+The change: orders.amount goes from DECIMAL(10, 2) to INTEGER. Nothing fails, but customer_totals
+sums that column, so the totals may silently change. That is the kind of impact the model judges.
+(Turning it into VARCHAR would not do: summing text fails, which the tool reports as breaking.)
 This script is a demo and is not part of the tests or CI.
 """
 
@@ -50,7 +51,7 @@ def main() -> int:
         shutil.copytree(TOY_PROJECT, changed)
         schema = changed / "schema.sql"
         # change the type of the "amount" column only (products.price is also a DECIMAL)
-        text, replaced = re.subn(r"(\bamount\s+)DECIMAL\(10, 2\)", r"\1VARCHAR", schema.read_text())
+        text, replaced = re.subn(r"(\bamount\s+)DECIMAL\(10, 2\)", r"\1INTEGER", schema.read_text())
         assert replaced == 1, "expected to change exactly one column"
         schema.write_text(text)
         after = load_project(changed)
