@@ -20,9 +20,9 @@ ways, STRICT wins over OTHER and OTHER over PASS, the cautious order for finding
 from pathlib import Path
 
 import pytest
-from schema_impact.core.columnuse import OTHER, PASS, STRICT, column_uses
 
 from schema_impact.adapters.dbt_manifest import load_dbt_project
+from schema_impact.core.columnuse import OTHER, PASS, STRICT, column_uses
 from schema_impact.core.lineage import ColumnRef
 from schema_impact.core.registry import Model, Project
 
