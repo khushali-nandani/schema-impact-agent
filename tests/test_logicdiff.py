@@ -208,6 +208,82 @@ def test_a_change_inside_a_derived_table_changes_the_whole_model():
     assert changed(before, after) is None
 
 
+# --- an alias or a position that ORDER BY reads -------------------------------------------------
+#
+# Qualify writes an alias read by WHERE, GROUP BY, HAVING or QUALIFY as the expression behind it, so
+# a change shows in the text of the clause. ORDER BY keeps the alias, so `ORDER BY a` reads as the
+# same text whatever `a` is computed as. With a LIMIT it decides which rows are kept; without, the
+# order of the rows. Either way the model as a whole changed.
+
+
+def test_an_order_by_that_reads_the_alias_of_a_changed_column_changes_the_whole_model():
+    before = "SELECT id, amount AS a FROM orders ORDER BY a"
+    after = "SELECT id, -amount AS a FROM orders ORDER BY a"
+    assert changed(before, after) is None
+
+
+def test_the_same_with_a_limit_which_decides_the_rows_kept():
+    before = "SELECT id, amount AS a FROM orders ORDER BY a LIMIT 5"
+    after = "SELECT id, amount * 2 AS a FROM orders ORDER BY a LIMIT 5"
+    assert changed(before, after) is None
+
+
+def test_an_order_by_expression_that_contains_the_alias_of_a_changed_column_counts_too():
+    before = "SELECT id, amount AS a FROM orders ORDER BY a + 1 DESC"
+    after = "SELECT id, amount * 2 AS a FROM orders ORDER BY a + 1 DESC"
+    assert changed(before, after) is None
+
+
+def test_an_order_by_position_that_points_at_a_changed_column_changes_the_whole_model():
+    before = "SELECT id, amount AS a FROM orders ORDER BY 2 LIMIT 5"
+    after = "SELECT id, amount * 2 AS a FROM orders ORDER BY 2 LIMIT 5"
+    assert changed(before, after) is None
+
+
+def test_an_order_by_that_reads_a_column_that_did_not_change_is_not_a_change():
+    before = "SELECT id, amount AS a, status AS s FROM orders ORDER BY s"
+    after = "SELECT id, amount * 2 AS a, status AS s FROM orders ORDER BY s"
+    assert changed(before, after) == {"a"}
+
+
+def test_an_order_by_position_of_a_column_that_did_not_change_is_not_a_change():
+    before = "SELECT id, amount AS a FROM orders ORDER BY 1"
+    after = "SELECT id, amount * 2 AS a FROM orders ORDER BY 1"
+    assert changed(before, after) == {"a"}
+
+
+def test_an_order_by_on_a_table_column_is_not_a_change():
+    before = "SELECT id, amount AS a FROM orders ORDER BY id"
+    after = "SELECT id, amount * 2 AS a FROM orders ORDER BY id"
+    assert changed(before, after) == {"a"}
+
+
+def test_an_order_by_alias_of_a_column_changed_through_an_earlier_cte_changes_the_whole_model():
+    before = A + "SELECT id, x AS y FROM a ORDER BY y"
+    after = A_EDITED + "SELECT id, x AS y FROM a ORDER BY y"
+    assert changed(before, after) is None
+
+
+@pytest.mark.parametrize(
+    "clause",
+    [
+        "GROUP BY s",
+        "GROUP BY 1",
+        "GROUP BY s HAVING n > 1",
+    ],
+)
+def test_the_other_clauses_that_read_an_alias_see_the_change_in_their_text(clause):
+    before = f"SELECT status AS s, COUNT(*) AS n FROM orders {clause}"
+    after = before.replace("status AS s", "UPPER(status) AS s")
+    assert changed(before, after) is None
+
+
+def test_a_qualify_that_reads_the_alias_of_a_changed_window_changes_the_whole_model():
+    before = "SELECT id, ROW_NUMBER() OVER (ORDER BY amount) AS rn FROM orders QUALIFY rn = 1"
+    after = "SELECT id, ROW_NUMBER() OVER (ORDER BY amount DESC) AS rn FROM orders QUALIFY rn = 1"
+    assert changed(before, after) is None
+
+
 # --- what it will not narrow down ---------------------------------------------------------------
 
 
