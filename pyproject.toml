@@ -4,7 +4,7 @@ build-backend = "hatchling.build"
 
 [project]
 name = "schema-impact-agent"
-version = "0.0.1"
+dynamic = ["version"]
 description = "LangGraph agent that predicts which downstream SQL models and columns break (or silently change) when a schema changes."
 readme = "README.md"
 requires-python = ">=3.11"
@@ -29,6 +29,9 @@ dev = [
     "ruff>=0.6",
 ]
 
+[tool.hatch.version]
+path = "src/schema_impact/__init__.py"
+
 [tool.hatch.build.targets.wheel]
 packages = ["src/schema_impact"]
 
@@ -42,6 +45,10 @@ select = ["E", "F", "I", "UP", "B"]
 
 [tool.pytest.ini_options]
 testpaths = ["tests"]
-# Tests that run dbt are slow and need `uv sync --group bench`; run them with `pytest -m bench`
-addopts = "-m 'not bench'"
-markers = ["bench: slow tests that run dbt and DuckDB (need the bench dependency group)"]
+# Tests that run dbt are slow and need `uv sync --group bench`; run them with `pytest -m bench`.
+# The wheel tests run with `pytest -m package`
+addopts = "-m 'not bench and not package'"
+markers = [
+    "bench: slow tests that run dbt and DuckDB (need the bench dependency group)",
+    "package: tests that build the wheel and run what is installed from it (need `uv build`)",
+]

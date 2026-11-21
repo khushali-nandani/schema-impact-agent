@@ -21,6 +21,7 @@ from pathlib import Path
 
 from sqlglot.errors import SqlglotError
 
+from schema_impact import __version__
 from schema_impact.adapters.dbt_manifest import load_dbt_project
 from schema_impact.agent.judge import Judge
 from schema_impact.core.impact import BREAKING, NEEDS_REVIEW
@@ -51,6 +52,7 @@ def _parser() -> argparse.ArgumentParser:
         prog="schema-impact",
         description="Find which models and columns a schema or SQL change affects.",
     )
+    parser.add_argument("--version", action="version", version=f"%(prog)s {__version__}")
     commands = parser.add_subparsers(dest="command", required=True)
     diff = commands.add_parser("diff", help="compare two versions of a project")
     diff.add_argument("before", nargs="?", help="the project folder as it was")

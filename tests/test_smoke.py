@@ -6,7 +6,7 @@ import schema_impact
 
 
 def test_version_is_set():
-    assert schema_impact.__version__ == "0.0.1"
+    assert schema_impact.__version__  # its value is checked in test_packaging
 
 
 @pytest.mark.parametrize("name", ["core", "agent", "adapters", "evals"])

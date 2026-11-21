@@ -1823,7 +1823,6 @@ wheels = [
 
 [[package]]
 name = "schema-impact-agent"
-version = "0.0.1"
 source = { editable = "." }
 dependencies = [
     { name = "langgraph" },
