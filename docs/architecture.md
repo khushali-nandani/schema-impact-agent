@@ -1,3 +1,8 @@
+- `ModelChanged` is still coarse where it is reported: it marks every column of the model. That is the case for an edit that changes the rows (a filter, a join, a grouping, a changed column that feeds one, an ORDER BY that reads one), and for anything `changed_outputs` does not understand. Whether such an edit changes any row of the output depends on the data, which the tool does not see, so these stay false alarms when they change nothing.
+- A column that is computed differently but whose value is the same on every row (for example `x + 0` for `x`) is still reported as changed: the comparison is of the SQL, not of results.
+- The narrowing only reads a model's SQL: a `UNION` makes the answer `None`, and a subquery is handled by being cautious (it sees every change before it), not by tracing it.
+- Dropping a column the query orders by is a `ModelChanged` (ORDER BY then means a table column instead of an output alias); it errs on the side of reporting.
+
 # Architecture
 
 > Status: design document. Implementation starts at L0 (see [Roadmap](#roadmap)).
@@ -131,22 +136,31 @@ Window `PARTITION BY` / `ORDER BY` columns are `select` edges to the window's ou
 
 ### Change detection and impact (implemented in L1)
 
-`diff_projects(before, after)` lists the changes: `ColumnRenamed`, `ColumnDropped`, `ColumnTypeChanged`, `TableDropped`, `ModelChanged`, `ModelDropped`. `compute_impact(before, changes)` walks the lineage graph from the changed columns and returns the affected models and columns, following chains of models (`orders.amount -> customer_totals.total -> top_customers.total`). Each `Impact` records the roles (select, join, where, ...), the path, and an effect:
+`diff_projects(before, after)` lists the changes: `ColumnRenamed`, `ColumnDropped`, `ColumnTypeChanged`, `TableDropped`, `ModelChanged`, `ColumnLogicChanged`, `ModelDropped`. `compute_impact(before, changes)` walks the lineage graph from the changed columns and returns the affected models and columns, following chains of models (`orders.amount -> customer_totals.total -> top_customers.total`). Each `Impact` records the roles (select, join, where, ...), the path, and an effect:
 
 | Change | Effect |
 |---|---|
 | rename, drop, dropped table, dropped model | `breaking` |
 | type change to text where a model gives the column to `SUM`, `AVG`, `date_diff` or arithmetic (DuckDB) | `breaking` |
-| any other type change, changed model logic | `needs_review` |
+| any other type change, changed model logic (a whole model or some of its columns) | `needs_review` |
 | nothing in the lineage graph depends on it | no impact, i.e. safe |
 
 The effect is deterministic and passes unchanged to every model further down the chain. `needs_review` is where a later layer (L2) judges how risky the change is.
 
-A breaking impact means the affected model's query fails, so that model cannot be built and every model that reads it is affected too, whichever of its columns it uses. A change that only needs review (a type change) follows the columns: only what is computed from the changed column is affected.
+A breaking impact means the affected model's query fails, so that model cannot be built and every model that reads it is affected too, whichever of its columns it uses. A change that only needs review (a type change, or a `ColumnLogicChanged`) follows the columns: only what is computed from the changed column is affected. A `ModelChanged` marks every column of the model.
 
 **A column that becomes text.** A model that only selects it is fine; `SUM(amount)`, `AVG`, `date_diff` or `amount / 100` on text fail on DuckDB, so the model cannot be built and dbt skips everything that reads it. `core/columnuse.py` says, for every (source column, output column) pair of a model, whether the output is the column itself (`PASS`), the column is the direct argument of one of those functions or of plain arithmetic (`STRICT`), or something else (`OTHER`: a cast, `ROUND`, `COUNT`, `MIN`, a comparison, a CASE condition). Across the CTEs of one model the use closest to the table decides unless it is `PASS`. `compute_impact` follows the text type along `PASS` edges; a model that gives it to a `STRICT` use becomes breaking, and so does everything that reads it. A cast stops the trail: `cast(order_estimated_delivery_date as date)` hands a DATE to the models after it.
 
 For a model whose SQL was edited, `diff_projects` also compares its output columns (read from the SQL). A renamed or dropped output column is a `ColumnRenamed` / `ColumnDropped` of that model, so the models reading it are breaking. If the edit only changed the shape of the final select (the rest of the query is identical and the remaining columns are computed the same way), no `ModelChanged` is reported, since readers are then affected only through the columns that changed. Anything else, including a new SQL that no longer resolves, is a `ModelChanged`.
+
+**An edit that changes how some columns are computed.** When the output columns are the same and the SQL differs, `core/logicdiff.py` (`changed_outputs`) says which of them are computed differently, and `diff_projects` reports one `ColumnLogicChanged(model, column)` for each, in output order, so only the readers of those columns are affected (`SUM(x)` changed to `AVG(x)` in one column flags the models that read that column, not those that read the others). It answers with a set of columns, an empty set (the edit changes no result, such as a renamed CTE or different spacing: nothing is reported), or `None` (it cannot narrow the edit down: `ModelChanged`, as before). Both versions are qualified against their schema, so every column says which table or CTE it comes from. Each CTE and the final select is a scope, compared on its projections one by one and on its "frame" (everything but the select list: FROM, JOIN, WHERE, GROUP BY, HAVING, QUALIFY, DISTINCT, ORDER BY, LIMIT), with CTE names made positional so that renaming one is no change. The change is then followed from scope to scope:
+
+- a changed frame changes which rows the scope has, so every column of it;
+- a scope that reads one whose rows changed has changed rows too;
+- a changed column that a later scope uses in its frame (a join key, a filter, a grouping) changes that scope's rows; one it only selects or aggregates changes only the columns made from it;
+- an ORDER BY that reads a changed output column, by alias or by position, is treated as changing the rows (with a LIMIT it does; without one the tool is cautious). Qualify writes an alias used by WHERE, GROUP BY, HAVING or QUALIFY as the expression behind it, so the text of those clauses shows the change, but ORDER BY keeps the alias, so it is checked on its own. Without this, `SELECT -total AS total ... ORDER BY total DESC LIMIT 2` was narrowed to one column although it picks other rows (found by writing the tests, fixed before use).
+
+If the rows of the final select changed, the answer is `None`; so it is for a different set or order of output columns, a CTE added or removed, a `UNION`, and SQL that does not parse or resolve. A rename or drop of an output column in the same edit is not narrowed either: it stays a `ModelChanged` next to the column change.
 
 ### Known change-detection limits
 
@@ -292,7 +306,29 @@ That is the rule described under change detection above. Scored again, with the 
 
 Every other kind is unchanged to the pair. Overall on Olist: breaking recall 96.9% -> 100% (1358/1358), affected recall 98.9% -> 100% (1436/1436), affected F1 97.4% -> 98.0%, no model called breaking that is not (1358/1358), and the 59 false alarms are as before. On jaffle_shop the 3 breaking pairs that had stayed `needs_review` are now breaking (breaking recall 90/93 -> 93/93, precision 100%).
 
-These are tuned numbers: the rule was found by reading the errors of the held-out run, so Olist can no longer say how well the tool does on a new project. The limits of the rule are listed under the change-detection limits. What is left is the false alarms: 39 of the 56 on logic edits come from 13 edits that change one output column, where the tool reports the whole model as changed, 4 from a pure refactor (a renamed CTE), and 13 from filters and joins that happen to change no rows; the last group cannot be told apart without the data. Not done yet.
+These are tuned numbers: the rule was found by reading the errors of the held-out run, so Olist can no longer say how well the tool does on a new project. The limits of the rule are listed under the change-detection limits. What is left is the false alarms: 39 of the 56 on logic edits come from 13 edits that change one output column, where the tool reports the whole model as changed, 4 from a pure refactor (a renamed CTE), and 13 from filters and joins that happen to change no rows; the last group cannot be told apart without the data. The first two are the next fix, below.
+
+### After the second fix (tuned, not held-out)
+
+39 of the 56 false alarms on logic edits were edits that change how one output column is computed (`avg` for `sum`, `round(x, 0)` for `round(x, 2)`, `upper(status)`), where the tool reported the whole model as changed, so every model reading any column of it was flagged; 4 were a renamed CTE, which changes nothing. The tool now compares the two versions of the SQL scope by scope and reports only the columns that are computed differently (see "An edit that changes how some columns are computed" under change detection). Scored again, with the code at the commit of that fix:
+
+| | Olist held-out | Olist after fix 1 | Olist after fix 2 | jaffle_shop after fix 1 | jaffle_shop after fix 2 |
+|---|---|---|---|---|---|
+| Affected models: precision | 96.0% | 96.1% | **98.9%** (1436/1452) | 94.4% | **95.9%** (117/122) |
+| Affected models: F1 | 97.4% | 98.0% | **99.4%** | 97.1% | **97.9%** |
+| Breaking models found | 96.9% | 100% | **100%** (1358/1358) | 100% | **100%** (93/93) |
+| Models called breaking that are not | 0 | 0 | **0** | 0 | **0** |
+| Silent models flagged | 78/78 | 78/78 | **78/78** | 24/24 | **24/24** |
+| Missed (predicted none) | 16 | 0 | **0** | 0 | **0** |
+| False alarms | 59 | 59 | **16** | 7 | **5** |
+
+The false alarms fell from 59 to 16 and nothing that was found before was lost: no silent model is missed and no model is called breaking that is not. Narrowing an edit is the one step of this tool that can hide a real change, so the guard was fixed before scoring: silent models flagged and breaking precision had to stay as they were, or the fix would have been reverted.
+
+The 16 that are left, from the report: 13 are logic edits that change the rows of a model (three `inner join` edits, `only_priced_above_ten`, `drop_vouchers`, `only_sao_paulo`), reported as a whole-model change because the rows may differ and that is not decided by the SQL; whether they really did not change any output here depends on Olist's data. The other 3 are one type change (`order_estimated_delivery_date`, 3 models). The reason these 13 and 3 stay has not been analysed beyond that.
+
+**Checked against data, not only against the tool's own reasoning.** `tests/test_column_logic_soundness.py` builds a small project in DuckDB on made-up rows (nulls, a customer without orders, orders without a customer) and applies 35 edits: a changed column read by a join, a filter, a grouping, an ORDER BY with LIMIT or a window, and refactors that change nothing. For every edit it checks that the columns the tool did not report have exactly the same rows as before, and that every model whose output really changed is flagged. None failed. Removing the ORDER BY check on purpose makes one of them fail (`SELECT -total AS total ... ORDER BY total DESC LIMIT 2` picks other rows), so the test does catch the kind of mistake it is there for. It is 35 edits on 5 models, not a proof.
+
+These are tuned numbers like the ones before: the rule was found by reading the errors of the held-out run.
 
 **Limits.** Two projects are not a sample. 78 pairs are silent. 268 of the 420 cases are the easy model-column edits, so report by kind. "Same output" is judged on Olist's own data, which is not in the repository (CC BY-NC-SA 4.0). The ground truth is built with DuckDB on one thread: with several threads `customer_rfm` (an `ntile` over tied values) differs on every build and made 258 pairs look "silent" in a first build, which was discarded. From the commit after this result, any fix is made by reading these errors, so the later rows are tuned and are labelled so.
 

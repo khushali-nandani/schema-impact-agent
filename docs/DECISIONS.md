@@ -154,3 +154,19 @@ It was measured on DuckDB, where text given to `SUM` or arithmetic is an error. 
 ## 38. The numbers after the text rule are labelled as tuned
 
 The rule came from reading the errors of the held-out Olist run, so the Olist figures after it are not held-out (decision 29): the results table keeps the held-out row and shows the new one beside it, with the text that says so. What the second run does show is that the rule cost nothing: no model is called breaking that is not, and no other kind of case changed. Its jaffle_shop result is also not held-out, and the arithmetic part of the rule rests on one jaffle case.
+
+## 39. An edit is narrowed to columns only when the tool can show the rows did not change
+
+Until now any edit of a model's SQL that was not just formatting was reported as a change of the whole model (effect `needs_review`, decision 15), which on Olist flagged every reader of every column (39 of the 56 logic false alarms changed one column, 4 only renamed a CTE). `changed_outputs` now compares the old and new SQL scope by scope (each CTE and the final select: select list one column at a time, and everything else as a "frame") and reports only the columns computed differently. The answer is narrow only when it can be shown that the rows did not change: a changed filter, join, grouping or ORDER BY on a changed column, a changed upstream scope, a different set or order of columns, a UNION, or SQL that does not parse or resolve all give "cannot narrow", which is the whole model, the answer before this existed. So a wrong narrowing is the only way this step can hide a real change, and every uncertainty goes the other way. The output of a model that is the same set of columns but computed differently is `ColumnLogicChanged(model, column)`; a rename or drop in the same edit is not narrowed.
+
+## 40. The narrowing is checked against data, not against its own reasoning
+
+A test that asserts what `changed_outputs` returns can only agree with the author's idea of correct. `tests/test_column_logic_soundness.py` instead runs 35 edits on a small project in DuckDB, on made-up rows with nulls and unmatched keys, and compares what changed with what the tool says: columns not reported must have the same rows, and every model whose output differs must be flagged. It passed on the first run, so it was also run with the ORDER BY check removed to see that it can fail; it did (`SELECT -total AS total ... ORDER BY total DESC LIMIT 2`). It is 35 edits on 5 models, a guard and not a proof. Before scoring, the benchmark guard was fixed too: silent models flagged and breaking precision must not move, or the fix is reverted. Both held.
+
+## 41. ORDER BY keeps its alias, so it is checked on its own
+
+Qualify writes an alias used in WHERE, GROUP BY, HAVING or QUALIFY as the expression behind it, so a change in that column shows in the text of the clause and makes the rows differ. It does not do that for ORDER BY, which keeps the alias or the position (`ORDER BY 2`). A changed column read there changes which rows come out (with a LIMIT), yet the text of the clause stays the same, so a first version narrowed it to one column: a silent miss. Found by writing the tests for the diff, fixed test-first. An ORDER BY that reads a changed output column, by name or by position, is now treated as changing the rows.
+
+## 42. The numbers after the column rule are labelled as tuned
+
+As with the text rule (decision 38), the rule came from reading the errors of the held-out Olist run, so the Olist figures after it are not held-out and are published beside the held-out row. What the second run shows is that it cost nothing: no silent model is missed, no model is called breaking that is not, and the false alarms fell from 59 to 16 (jaffle_shop 7 to 5). The 16 left are 13 logic edits that change rows and 3 from one type change; they were not analysed further.

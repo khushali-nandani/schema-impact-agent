@@ -14,7 +14,7 @@ See [docs/architecture.md](docs/architecture.md) for the full problem statement 
 
 ## Status
 
-Early development. L0 (column lineage), L1 (change detection and impact), L2 (LangGraph agent with human approval) and L3 (benchmark) are done. L4 is in progress: the tool was scored once, untouched, on a second project (see Results), and one fix has been made from what that showed; the numbers after it are labelled as tuned. The CLI and packaging come after.
+Early development. L0 (column lineage), L1 (change detection and impact), L2 (LangGraph agent with human approval) and L3 (benchmark) are done. L4 is in progress: the tool was scored once, untouched, on a second project (see Results), and two fixes have been made from what that showed; the numbers after them are labelled as tuned. The CLI and packaging come after.
 
 | Level | Scope | Status |
 |---|---|---|
@@ -67,7 +67,21 @@ The 16 misses were all one thing: a column that becomes text. A model that only 
 | Missed (predicted none) | 16 | 0 | 0 | 0 |
 | False alarms | 59 | 59 | 7 | 7 |
 
-The fix was found by reading the Olist errors, so the Olist column is not a held-out estimate. What it does show is that the rule did not cost precision (no model is called breaking that is not) and changed no other kind of case. jaffle_shop improved too, but the rule's arithmetic part rests on one jaffle case, and both projects only retype to `VARCHAR`, so any other type change still just needs review. The 59 false alarms are untouched: most come from edits that change one output column or only refactor, where the tool reports the whole model as changed. Reports: [benchmarks/results](benchmarks/results/README.md).
+The fix was found by reading the Olist errors, so the Olist column is not a held-out estimate. What it does show is that the rule did not cost precision (no model is called breaking that is not) and changed no other kind of case. jaffle_shop improved too, but the rule's arithmetic part rests on one jaffle case, and both projects only retype to `VARCHAR`, so any other type change still just needs review. The 59 false alarms were untouched by this fix: most came from edits that change one output column or only refactor, where the tool reported the whole model as changed (fixed next). Reports: [benchmarks/results](benchmarks/results/README.md).
+
+### After the second fix (tuned, not held-out)
+
+39 of the 56 false alarms on logic edits changed how one output column is computed (`avg` for `sum`, `upper(status)`), and 4 only renamed a CTE. The tool reported the whole model as changed, so every model reading any of its columns was flagged. It now compares the two versions of the SQL scope by scope and reports only the columns computed differently; a renamed CTE is no change. Wherever the rows of the model may differ (a filter, a join, a grouping, an ORDER BY that reads a changed column) or the SQL is not understood, it still reports the whole model.
+
+| | Olist after fix 1 | Olist after fix 2 | jaffle_shop after fix 1 | jaffle_shop after fix 2 |
+|---|---|---|---|---|
+| Affected models: F1 | 98.0% | **99.4%** | 97.1% | **97.9%** |
+| Breaking models found | 100% (1358/1358) | **100%** (1358/1358) | 100% (93/93) | **100%** (93/93) |
+| Models called breaking that are not | 0 | **0** | 0 | **0** |
+| Silent models flagged | 78/78 | **78/78** | 24/24 | **24/24** |
+| False alarms | 59 | **16** | 7 | **5** |
+
+Nothing found before was lost. This is the step that could hide a real change, so besides the benchmark it is checked on data: 35 edits on a small DuckDB project (made-up rows), where the columns the tool did not report must have the same rows as before and every model that really changed must be flagged; none failed. The 16 left: 13 logic edits that change the rows of a model (joins and filters), which the SQL alone cannot settle, and 3 from one type change. Still tuned numbers, not a held-out estimate. Reports: [benchmarks/results](benchmarks/results/README.md).
 
 ## Development
 
