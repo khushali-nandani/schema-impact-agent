@@ -31,3 +31,6 @@ jobs:
 
       - name: Tests (pytest)
         run: uv run pytest
+
+      - name: Wheel (build it, run what is installed from it)
+        run: uv run pytest -m package
