@@ -25,6 +25,7 @@ def test_every_dataclass_of_the_project_is_allowed():
         ("schema_impact.core.impact", "Impact"),
         ("schema_impact.core.lineage", "ColumnRef"),
         ("schema_impact.core.changes", "ColumnRenamed"),
+        ("schema_impact.core.changes", "ColumnLogicChanged"),
         ("schema_impact.core.registry", "Project"),
         ("schema_impact.agent.judge", "Verdict"),
         ("schema_impact.agent.judge", "Judgment"),

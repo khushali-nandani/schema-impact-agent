@@ -15,6 +15,7 @@ from project_edits import (
 from schema_impact.adapters.dbt_manifest import load_dbt_project
 from schema_impact.core.changes import (
     ColumnDropped,
+    ColumnLogicChanged,
     ColumnRenamed,
     ColumnTypeChanged,
     ModelChanged,
@@ -226,11 +227,11 @@ def test_on_a_real_dbt_model_a_rewritten_select_list_is_only_a_column_change():
     ]
 
 
-def test_on_a_real_dbt_model_a_changed_definition_inside_a_cte_is_still_a_model_change():
+def test_on_a_real_dbt_model_a_changed_definition_inside_a_cte_is_only_that_column():
     jaffle = load_dbt_project(Path(__file__).parent / "fixtures" / "jaffle_shop_dbt")
     sql = jaffle.models["stg_orders"].sql
     assert "status" in sql
     after = change_model_sql(
         jaffle, "stg_orders", sql.replace("status", "UPPER(status) AS status", 1)
     )
-    assert diff_projects(jaffle, after) == [ModelChanged("stg_orders")]
+    assert diff_projects(jaffle, after) == [ColumnLogicChanged("stg_orders", "status")]

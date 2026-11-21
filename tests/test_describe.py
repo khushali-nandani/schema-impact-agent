@@ -1,6 +1,7 @@
 from schema_impact.agent.describe import describe_change, describe_path, describe_place
 from schema_impact.core.changes import (
     ColumnDropped,
+    ColumnLogicChanged,
     ColumnRenamed,
     ColumnTypeChanged,
     ModelChanged,
@@ -41,6 +42,11 @@ def test_describe_a_changed_model():
     assert (
         describe_change(ModelChanged("product_sales")) == "The SQL of model product_sales changed"
     )
+
+
+def test_describe_a_column_whose_logic_changed():
+    text = describe_change(ColumnLogicChanged("customer_totals", "total"))
+    assert text == "The logic of customer_totals.total changed"
 
 
 def test_describe_a_column_place():
