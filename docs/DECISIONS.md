@@ -114,3 +114,43 @@ The 7B model judged every impact high, so it added nothing. Rewriting the prompt
 
 The fixes of decisions 24 to 26 were found by reading the errors of this very dataset. The results table says so, and it keeps every intermediate row so the effect of each fix can be seen.
 
+
+## 29. A second, untouched project is the held-out test, scored once before any fix
+
+The jaffle_shop numbers were tuned on their own errors (decision 28). To measure what carries over, the tool was run on Olist, a project of a different shape, vendored unmodified (MIT; its data, CC BY-NC-SA, stays out of the repository). The tool's `core/`, `agent/` and scorer were not touched between v0.4.0 and the first score, the report was committed before it was read, and every fix after it is reported as tuned on Olist.
+
+## 30. A dbt CSV source is named after its source and its columns are read from the file
+
+With dbt-duckdb, `external_location` makes a source compile to a table named by its file path (or a `read_csv(...)` call), and `catalog.json` lists no columns for it. The adapter names it `<source>__<table>`, matches the table expression whatever its alias, and reads the column names and types with DuckDB. `duckdb` is imported only when such a source exists.
+
+## 31. Ground truth must be reproducible, so DuckDB runs on one thread
+
+Building the unmutated Olist project three times gave three different `customer_rfm` tables: an `ntile` over tied values gets its rows in a different order on each run with several threads. That made 258 pairs "silent" for no reason, about three quarters of all silent labels in the first build. That dataset was discarded; builds now run DuckDB on one thread in the copy (the project's own profile is untouched), and a test builds the project twice and compares every model. jaffle_shop was checked the same way and is deterministic.
+
+## 32. Models are compared through a snapshot taken inside the project folder
+
+A model that reads a CSV is a view holding the relative path `data/x.csv`, looked up when the view is queried, in the folder the process runs in. Attaching two databases from one place would make both views read the same file, or none, and a changed CSV would never be seen. After `dbt run` the rows of every model that built are copied into a plain database while inside the project folder, and models are compared from the two snapshots.
+
+## 33. A mutation never edits an original data file
+
+The 120 MB of CSV files are linked, one by one, into each case copy instead of copied, so editing must replace the link with a new file; writing through it would change the original for every later case. Renaming copies every byte after the header; dropping a column writes every other field back exactly as it was, because Olist mixes quoted and unquoted fields on purpose (a zip code `"01037"` is quoted to keep its zero). A rewrite that drops nothing gives the same bytes for all nine files, and a build stops if an original changes. A column type is changed with `struct_pack(...)` in a `read_csv` location, since dbt renders the location as Jinja and then formats it, and both would take `{...}` for something to fill in.
+
+## 34. The held-out result is published before the fixes
+
+Writing the first Olist result into the README and the architecture notes before any change makes it checkable that the later, tuned numbers are not passed off as held-out ones. The result is mixed on purpose: overall F1 matches jaffle_shop, but type changes (79.5% of affected pairs found, never called breaking) are a real weak spot that the overall number hides.
+
+## 35. A column that becomes text is breaking where a model sums or divides it, not everywhere
+
+Decision 15 made every type change `needs_review`. On Olist that missed 16 models dbt fails: the tool flagged the model that fails but only as `needs_review`, which follows columns, so the readers that skip because of it got `none`. Calling every type change breaking would be wrong too: of the 24 type-change cases, 450 of 528 pairs were safe. What separates them is what the model does with the column. Selecting, comparing, counting or taking the min of text never failed (50 of 50 built); `SUM`, `AVG` and `date_diff` failed every time the column was still text (6 and 2), and so did `amount / 100` on jaffle_shop (1). So only a model that gives the text column to one of those becomes breaking, and like any breaking impact it takes its readers with it and is explained from templates, not judged by the model (decision 17).
+
+## 36. The text type follows pass-through columns and a cast stops it
+
+On Olist one `date_diff` over a column retyped to text still built: staging had already done `cast(... as date)`, so the model after it got a DATE. A rule that looked at the function alone would have called it breaking. `column_uses` therefore says for each (source column, output column) whether the output is the column itself, a strict use, or something else, and the text type is followed only along the first kind. The cautious order when one column reaches an output several ways is strict, then other, then pass.
+
+## 37. The text rule applies on DuckDB only
+
+It was measured on DuckDB, where text given to `SUM` or arithmetic is an error. Snowflake, for one, may convert text to numbers implicitly, so the same change could build there; that was not measured either way. Other dialects keep decision 15 until someone measures them. The rule is also only for a change to text, and lists only the functions with evidence, so a type change it does not recognise stays `needs_review`: the misses it can leave are errors of recall, not a wrong "breaking".
+
+## 38. The numbers after the text rule are labelled as tuned
+
+The rule came from reading the errors of the held-out Olist run, so the Olist figures after it are not held-out (decision 29): the results table keeps the held-out row and shows the new one beside it, with the text that says so. What the second run does show is that the rule cost nothing: no model is called breaking that is not, and no other kind of case changed. Its jaffle_shop result is also not held-out, and the arithmetic part of the rule rests on one jaffle case.

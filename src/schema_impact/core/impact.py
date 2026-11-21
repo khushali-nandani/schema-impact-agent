@@ -15,10 +15,15 @@ model further down the chain.
 A breaking change makes the query of an affected model fail, so that model cannot be built and
 every model that reads it is affected too, whichever of its columns they use. A change that only
 needs review follows the columns: only what is computed from the changed column is affected.
+
+One kind of review turns into a failure: a column that becomes text. A model that only selects it
+is fine, but `SUM(amount)`, `amount / 100` or `date_diff(...)` on text fail on DuckDB, where this
+was measured. The text type travels along columns that are passed on as they are, and a model that
+gives it to one of those fails like a breaking change does. A cast on the way stops it.
 """
 
 from collections import deque
-from dataclasses import dataclass
+from dataclasses import dataclass, replace
 
 from schema_impact.core.changes import (
     Change,
@@ -29,11 +34,17 @@ from schema_impact.core.changes import (
     ModelDropped,
     TableDropped,
 )
-from schema_impact.core.lineage import ColumnRef, Edge, build_lineage
+from schema_impact.core.columnuse import PASS, STRICT, column_uses
+from schema_impact.core.lineage import SELECT, ColumnRef, Edge, build_lineage
 from schema_impact.core.registry import Project
 
 BREAKING = "breaking"
 NEEDS_REVIEW = "needs_review"
+
+# Where giving text to SUM, arithmetic or date_diff is an error. Only DuckDB has been measured;
+# others, Snowflake for one, convert text to numbers on the fly.
+_TEXT_FAILS_IN = {"duckdb"}
+_TEXT_TYPES = {"VARCHAR", "TEXT", "STRING", "CHAR", "NVARCHAR", "BPCHAR"}
 
 
 @dataclass(frozen=True)
@@ -65,10 +76,15 @@ def compute_impact(project: Project, changes: list[Change]) -> list[Impact]:
             if edge.target.column not in columns:
                 columns.append(edge.target.column)
 
+    uses: dict[tuple[ColumnRef, ColumnRef], str] | None = None
     impacts: list[Impact] = []
     for change in changes:
         seeds = _starting_columns(change, project, model_columns)
-        impacts.extend(_follow(change, seeds, by_source, model_columns))
+        found = _follow(change, seeds, by_source, model_columns, _effect_of(change))
+        if _becomes_text(change) and project.dialect in _TEXT_FAILS_IN:
+            uses = column_uses(project) if uses is None else uses
+            found = _models_that_fail_on_text(change, seeds, found, by_source, model_columns, uses)
+        impacts.extend(found)
     return impacts
 
 
@@ -94,14 +110,77 @@ def _effect_of(change: Change) -> str:
     return NEEDS_REVIEW
 
 
+def _is_text(type_name: str) -> bool:
+    return type_name.upper().split("(")[0].strip() in _TEXT_TYPES
+
+
+def _becomes_text(change: Change) -> bool:
+    return (
+        isinstance(change, ColumnTypeChanged)
+        and _is_text(change.new_type)
+        and not _is_text(change.old_type)
+    )
+
+
+def _models_that_fail_on_text(
+    change: Change,
+    seeds: list[ColumnRef],
+    impacts: list[Impact],
+    by_source: dict[ColumnRef, list[Edge]],
+    model_columns: dict[str, list[str]],
+    uses: dict[tuple[ColumnRef, ColumnRef], str],
+) -> list[Impact]:
+    """Make the models that give the text column to SUM, arithmetic or date_diff breaking.
+
+    The text type travels along the columns that are passed on unchanged (PASS). A model that
+    gives it to a strict use cannot be built, so it and everything that reads it is breaking,
+    whichever columns they use. A use that is neither (a cast, ROUND, COUNT, ...) ends the trail.
+    """
+    failing: set[str] = set()
+    typed = set(seeds)
+    queue = deque(seeds)
+    while queue:
+        source = queue.popleft()
+        for edge in by_source.get(source, []):
+            if edge.kind != SELECT:
+                continue
+            use = uses.get((edge.source, edge.target))
+            if use == STRICT:
+                failing.add(edge.target.table)
+            elif use == PASS and edge.target not in typed:
+                typed.add(edge.target)
+                queue.append(edge.target)
+    if not failing:
+        return impacts
+
+    down = {}  # what the failing models take with them, by (model, column)
+    for model in sorted(failing):
+        columns = [ColumnRef(model, c) for c in model_columns.get(model, [])]
+        for impact in _follow(change, columns, by_source, model_columns, BREAKING):
+            down[(impact.model, impact.column)] = impact
+    broken = failing | {model for model, _ in down}
+
+    merged = {
+        (i.model, i.column): replace(i, effect=BREAKING) if i.model in broken else i
+        for i in impacts
+    }
+    merged.update(down)
+    return [merged[key] for key in sorted(merged, key=_impact_order)]
+
+
+def _impact_order(key: tuple[str, str | None]) -> tuple[str, bool, str]:
+    model, column = key
+    return (model, column is not None, column or "")
+
+
 def _follow(
     change: Change,
     seeds: list[ColumnRef],
     by_source: dict[ColumnRef, list[Edge]],
     model_columns: dict[str, list[str]],
+    effect: str,
 ) -> list[Impact]:
     """Walk the lineage graph breadth first from the changed columns."""
-    effect = _effect_of(change)
     found: dict[tuple[str, str | None], tuple[set[str], tuple[ColumnRef, ...]]] = {}
     visited = set(seeds)
     queue = deque((seed, (seed,)) for seed in seeds)
@@ -132,6 +211,6 @@ def _follow(
     return [
         Impact(change, model, column, frozenset(roles), effect, path)
         for (model, column), (roles, path) in sorted(
-            found.items(), key=lambda item: (item[0][0], item[0][1] is not None, item[0][1] or "")
+            found.items(), key=lambda item: _impact_order(item[0])
         )
     ]

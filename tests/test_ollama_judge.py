@@ -154,7 +154,7 @@ def test_a_connection_problem_is_not_hidden(impact):
 
 def test_the_judge_works_inside_the_review_graph(toy_project_path):
     before = load_project(toy_project_path)
-    after = change_type(before, "orders", "amount", "VARCHAR")
+    after = change_type(before, "orders", "amount", "DOUBLE")
     client = FakeClient(*[answer("low", "MODEL SAYS FINE", "nothing")] * 3)
     judge = OllamaJudge(client, model_sql={m: p.sql for m, p in before.models.items()})
 

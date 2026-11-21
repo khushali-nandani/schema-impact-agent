@@ -50,7 +50,7 @@ def small(before):
     """A type change (needs review) and a rename (breaking) on the toy project."""
     retype = case(
         before,
-        change_type(before, "orders", "amount", "VARCHAR"),
+        change_type(before, "orders", "amount", "DOUBLE"),
         {"customer_totals": "silent", "product_sales": "safe", "top_customers": "silent"},
         "retype",
     )

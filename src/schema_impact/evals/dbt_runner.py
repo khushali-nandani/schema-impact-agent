@@ -6,6 +6,16 @@ skipped, and catalogs the seeds). Each model that the mutation is judged on is l
 its dbt status and a comparison of its output with the unmutated build.
 
 Needs the bench dependency group: `uv sync --group bench`.
+
+Big data files: a project's `data/` folder (the CSV files that dbt-duckdb sources read) is not
+copied for every case. The copy gets a real `data/` folder whose files are links to the originals.
+A mutation that edits one of them replaces the link with a new file (see `_write_csv` in
+mutations.py), so the original is never written to. Symlinks: macOS and Linux only.
+
+Reproducible builds: DuckDB runs on one thread in the copy that is built (the copy's profile is
+changed, the project's is not). With several threads a window function over tied values, such as
+Olist's `ntile(5) over (order by ...)`, gets its rows in a different order each time, so two
+identical builds differ and a model would be labelled "silent" for no reason.
 """
 
 import json
@@ -21,10 +31,27 @@ from schema_impact.core.registry import Project
 from schema_impact.evals.groundtruth import label_model, scored_models, statuses_from_run_results
 from schema_impact.evals.mutations import Mutation, MutationError, apply_mutation
 from schema_impact.evals.results import Baseline, CaseResult
-from schema_impact.evals.tablediff import outputs_changed
 
 TIMEOUT_SECONDS = 300
-_NOT_COPIED = shutil.ignore_patterns("target", "logs", "dbt_packages", "*.duckdb", "*.duckdb.wal")
+_NOT_COPIED = shutil.ignore_patterns("target", "logs", "*.duckdb", "*.duckdb.wal", ".user.yml")
+_LINKED_FOLDERS = ("data",)  # their files are shared between copies, not copied
+
+# A model that reads a CSV file is a view holding the relative path of the file, which DuckDB
+# looks up when the view is queried, in the folder the process runs in. Two databases cannot be
+# compared from one place, so the rows of every built model are copied into a plain database
+# while we are in the project's folder.
+SNAPSHOT_FILE = "snapshot.db"
+_SNAPSHOT_SCRIPT = """
+import json, sys
+import duckdb
+database, models, snapshot = sys.argv[1], json.loads(sys.argv[2]), sys.argv[3]
+con = duckdb.connect(snapshot)
+con.execute("ATTACH ? AS built (READ_ONLY)", [database])
+for name in models:
+    quoted = '"' + name.replace('"', '""') + '"'
+    con.execute(f"CREATE TABLE main.{quoted} AS SELECT * FROM built.main.{quoted}")
+con.close()
+"""
 
 
 class DbtError(Exception):
@@ -37,13 +64,15 @@ def run_baseline(project_dir: str | Path, workdir: str | Path) -> Baseline:
     shutil.rmtree(target, ignore_errors=True)
     _copy_project(Path(project_dir), target)
     statuses, project = _build(target)
-    return Baseline(statuses=statuses, project=project, database=_database(target))
+    return Baseline(statuses=statuses, project=project, database=target / SNAPSHOT_FILE)
 
 
 def run_case(
     project_dir: str | Path, baseline: Baseline, mutation: Mutation, workdir: str | Path
 ) -> CaseResult:
     """Apply one mutation to a fresh copy of the project, build it and label the models."""
+    from schema_impact.evals.tablediff import outputs_changed  # needs duckdb: keep import light
+
     case_dir = Path(workdir) / re.sub(r"[^A-Za-z0-9_.-]", "_", mutation.id)
     shutil.rmtree(case_dir, ignore_errors=True)
     _copy_project(Path(project_dir), case_dir)
@@ -56,7 +85,7 @@ def run_case(
             if status is None:
                 raise DbtError(f"dbt reported no status for model {model}")
             changed = status == "success" and outputs_changed(
-                baseline.database, _database(case_dir), model
+                baseline.database, case_dir / SNAPSHOT_FILE, model
             )
             labels[model] = label_model(status, changed)
         return CaseResult(mutation, statuses, labels, after, None)
@@ -68,7 +97,8 @@ def run_case(
 
 def _build(project_dir: Path) -> tuple[dict[str, str], Project]:
     """dbt seed, dbt run, dbt docs generate. A failing seed or run is a result, not an error."""
-    _dbt(project_dir, "seed")
+    if _needs_seed(project_dir):
+        _dbt(project_dir, "seed")
     run_results = project_dir / "target" / "run_results.json"
     run_results.unlink(missing_ok=True)  # do not mistake the seed's results for the run's
     run = _dbt(project_dir, "run")
@@ -76,11 +106,32 @@ def _build(project_dir: Path) -> tuple[dict[str, str], Project]:
         raise DbtError(f"dbt run wrote no run_results.json:\n{_tail(run)}")
     # read now: `dbt docs generate` overwrites run_results.json
     statuses = statuses_from_run_results(json.loads(run_results.read_text()))
+    _snapshot(project_dir, [name for name, status in statuses.items() if status == "success"])
 
     docs = _dbt(project_dir, "docs", "generate")
     if docs.returncode != 0:
         raise DbtError(f"dbt docs generate failed:\n{_tail(docs)}")
     return statuses, load_dbt_project(project_dir)
+
+
+def _snapshot(project_dir: Path, models: list[str]) -> Path:
+    """Copy the rows of `models` from the project's database into `snapshot.db` beside it.
+
+    Runs in the project folder, so views over CSV files read the project's own files.
+    """
+    path = project_dir / SNAPSHOT_FILE
+    path.unlink(missing_ok=True)
+    result = subprocess.run(
+        [sys.executable, "-I", "-c", _SNAPSHOT_SCRIPT]
+        + [str(_database(project_dir).resolve()), json.dumps(models), SNAPSHOT_FILE],
+        cwd=project_dir,
+        capture_output=True,
+        text=True,
+        timeout=TIMEOUT_SECONDS,
+    )
+    if result.returncode != 0:
+        raise DbtError(f"Could not snapshot the built models:\n{_tail(result)}")
+    return path
 
 
 def _dbt(project_dir: Path, *args: str) -> subprocess.CompletedProcess[str]:
@@ -103,7 +154,49 @@ def _dbt_binary() -> str:
 
 
 def _copy_project(source: Path, destination: Path) -> None:
-    shutil.copytree(source, destination, ignore=_NOT_COPIED)
+    """Copy a project for one case. Raises DbtError if its dbt packages were never installed."""
+    if (source / "packages.yml").is_file() and not (source / "dbt_packages").is_dir():
+        raise DbtError(f"{source} needs dbt packages. Run `dbt deps` in it first.")
+
+    def ignore(folder: str, names: list[str]) -> set[str]:
+        skipped = set(_NOT_COPIED(folder, names))
+        if Path(folder) == source:  # only the project's own data folder, not any other `data`
+            skipped.update(name for name in names if name in _LINKED_FOLDERS)
+        return skipped
+
+    shutil.copytree(source, destination, ignore=ignore)
+    for folder in _LINKED_FOLDERS:
+        _link_files(source / folder, destination / folder)
+    _run_duckdb_on_one_thread(destination)
+
+
+def _run_duckdb_on_one_thread(project_dir: Path) -> None:
+    """Set `settings: {threads: 1}` on every duckdb output of the copy's profiles.yml."""
+    path = project_dir / "profiles.yml"
+    if not path.is_file():
+        return
+    import yaml  # comes with dbt
+
+    profiles = yaml.safe_load(path.read_text()) or {}
+    for profile in profiles.values():
+        for output in (profile.get("outputs") or {}).values():
+            if output.get("type") == "duckdb":
+                output.setdefault("settings", {})["threads"] = 1
+    path.write_text(yaml.safe_dump(profiles, sort_keys=False))
+
+
+def _link_files(source: Path, destination: Path) -> None:
+    """A real folder `destination` whose files are links to the files of `source`."""
+    if not source.is_dir():
+        return
+    destination.mkdir()
+    for file in sorted(source.iterdir()):
+        (destination / file.name).symlink_to(file.resolve())
+
+
+def _needs_seed(project_dir: Path) -> bool:
+    """Whether the project has any seed file; `dbt seed` has nothing to do otherwise."""
+    return any((project_dir / "seeds").rglob("*.csv"))
 
 
 def _database(project_dir: Path) -> Path:
