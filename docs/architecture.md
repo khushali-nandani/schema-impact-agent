@@ -240,3 +240,30 @@ What the fixes were, and what found them:
 - A `SELECT COUNT(*)` reader of a dropped table has no lineage edge and is not flagged (see the change-detection limits).
 
 Reproduce: `uv sync --group bench`, then `python -m schema_impact.evals.build_dataset` (about ten minutes, needs dbt) and `python -m schema_impact.evals.score`.
+
+### Second project: Olist (held-out)
+
+The jaffle_shop numbers are not a held-out estimate, so the tool was run, unchanged, on a second project: [Olist](../benchmarks/olist/NOTICE.md), an e-commerce dbt project of 22 models (9 staging, 4 intermediate, 9 marts) that reads nine CSV files through dbt-duckdb sources. It was chosen for being a different shape from jaffle_shop (CTE chains, window functions, `dbt_utils`, no seeds) and vendored unmodified.
+
+**What had to be built for it** (none of it in `core/` or `agent/`): the dbt adapter names a CSV source `<source>__<table>` and reads its columns and types from the file with DuckDB, since `catalog.json` lists none; the runner shares the 120 MB of CSV files between case copies by linking them, and a mutation replaces a file instead of writing through the link; and models are compared through a snapshot of their rows taken inside the project folder, because a model that reads a CSV is a view holding a relative path.
+
+**Mutations (420).** 52 source-column renames, 52 drops and 24 type changes (a column read as varchar through `read_csv(..., types=...)`); 134 model-column renames and 134 drops; 24 hand-written logic edits, written from the SQL before the tool was run on the project. 8948 (case, model) pairs: 1358 breaking, 78 silent, 7512 safe.
+
+**The first score** was made with the code of v0.4.0 (`core/`, `agent/` and the scorer unchanged since that tag) and committed before it was read.
+
+| Kind | Pairs | Affected recall | Breaking recall | Silent flagged |
+|---|---|---|---|---|
+| model rename / drop | 5628 | 100% (644/644) | 100% (644/644) | n/a |
+| source rename / drop | 2288 | 100% (672/672) | 100% (672/672) | n/a |
+| logic edit | 504 | 100% (42/42) | n/a | 100% (42/42) |
+| **source type change** | 528 | **79.5% (62/78)** | **0% (0/42)** | 100% (36/36) |
+| All | 8948 | 98.9% (1420/1436) | 96.9% (1316/1358) | 100% (78/78) |
+
+Affected precision is 96.0% (1420/1479) and F1 97.4%; no model was called breaking that was not (1316/1316). The tool does what it was built for on renames, drops and logic edits, including on a project it was not tuned on. Where it is weak:
+
+- **Type changes.** 16 models that dbt fails are predicted `none`, all in the far marts (`category_satisfaction`, `customer_rfm`, `customer_satisfaction`, `seller_performance`); why the change does not reach them has not been analysed yet. Another 26 breaking pairs are predicted `needs_review`: a type change is never called breaking, although dbt fails in these cases. All 36 silent type-change pairs are flagged.
+- **False alarms (59).** 56 come from 18 of the 24 logic edits and 3 from one type change: the tool flags readers of an edited model, and in these cases dbt's output for them did not change (for example `upper(order_status)` in `stg_olist__orders`, or an `inner join` where no row was lost). Whether the tool could tell these apart without the data has not been analysed yet.
+
+**Limits.** Two projects are not a sample. 78 pairs are silent. 268 of the 420 cases are the easy model-column edits, so report by kind. "Same output" is judged on Olist's own data, which is not in the repository (CC BY-NC-SA 4.0). The ground truth is built with DuckDB on one thread: with several threads `customer_rfm` (an `ntile` over tied values) differs on every build and made 258 pairs look "silent" in a first build, which was discarded. From the commit after this result, any fix is made by reading these errors, so the later rows are tuned and are labelled so.
+
+Reproduce: put the CSV files in `benchmarks/olist/data` (see its `DATA.md`), `dbt deps` in that folder, then `python -m schema_impact.evals.build_dataset --benchmark olist` (about an hour) and `python -m schema_impact.evals.score --dataset benchmarks/dataset/olist.json`.

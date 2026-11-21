@@ -13,3 +13,9 @@ Each file is the output of `python -m schema_impact.evals.score` on `../dataset/
 | `2026-11-20-llm-judgments.json` | the judge's 93 answers (qwen2.5-coder:7b), so the last report can be rebuilt without a model |
 
 The fixes were chosen by reading the errors of this dataset, so the later rows are not held-out estimates. See [docs/architecture.md](../../docs/architecture.md#benchmark-l3).
+
+## Olist
+
+| File | State of the code |
+|---|---|
+| `2026-11-21-olist-held-out.md` | the code of v0.4.0, scored once on `../dataset/olist.json` before any change. The report was committed before it was read, so this is the held-out result. Later Olist files, if any, are tuned on its errors and say so. |

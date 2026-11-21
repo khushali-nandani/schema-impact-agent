@@ -114,3 +114,27 @@ The 7B model judged every impact high, so it added nothing. Rewriting the prompt
 
 The fixes of decisions 24 to 26 were found by reading the errors of this very dataset. The results table says so, and it keeps every intermediate row so the effect of each fix can be seen.
 
+
+## 29. A second, untouched project is the held-out test, scored once before any fix
+
+The jaffle_shop numbers were tuned on their own errors (decision 28). To measure what carries over, the tool was run on Olist, a project of a different shape, vendored unmodified (MIT; its data, CC BY-NC-SA, stays out of the repository). The tool's `core/`, `agent/` and scorer were not touched between v0.4.0 and the first score, the report was committed before it was read, and every fix after it is reported as tuned on Olist.
+
+## 30. A dbt CSV source is named after its source and its columns are read from the file
+
+With dbt-duckdb, `external_location` makes a source compile to a table named by its file path (or a `read_csv(...)` call), and `catalog.json` lists no columns for it. The adapter names it `<source>__<table>`, matches the table expression whatever its alias, and reads the column names and types with DuckDB. `duckdb` is imported only when such a source exists.
+
+## 31. Ground truth must be reproducible, so DuckDB runs on one thread
+
+Building the unmutated Olist project three times gave three different `customer_rfm` tables: an `ntile` over tied values gets its rows in a different order on each run with several threads. That made 258 pairs "silent" for no reason, about three quarters of all silent labels in the first build. That dataset was discarded; builds now run DuckDB on one thread in the copy (the project's own profile is untouched), and a test builds the project twice and compares every model. jaffle_shop was checked the same way and is deterministic.
+
+## 32. Models are compared through a snapshot taken inside the project folder
+
+A model that reads a CSV is a view holding the relative path `data/x.csv`, looked up when the view is queried, in the folder the process runs in. Attaching two databases from one place would make both views read the same file, or none, and a changed CSV would never be seen. After `dbt run` the rows of every model that built are copied into a plain database while inside the project folder, and models are compared from the two snapshots.
+
+## 33. A mutation never edits an original data file
+
+The 120 MB of CSV files are linked, one by one, into each case copy instead of copied, so editing must replace the link with a new file; writing through it would change the original for every later case. Renaming copies every byte after the header; dropping a column writes every other field back exactly as it was, because Olist mixes quoted and unquoted fields on purpose (a zip code `"01037"` is quoted to keep its zero). A rewrite that drops nothing gives the same bytes for all nine files, and a build stops if an original changes. A column type is changed with `struct_pack(...)` in a `read_csv` location, since dbt renders the location as Jinja and then formats it, and both would take `{...}` for something to fill in.
+
+## 34. The held-out result is published before the fixes
+
+Writing the first Olist result into the README and the architecture notes before any change makes it checkable that the later, tuned numbers are not passed off as held-out ones. The result is mixed on purpose: overall F1 matches jaffle_shop, but type changes (79.5% of affected pairs found, never called breaking) are a real weak spot that the overall number hides.
