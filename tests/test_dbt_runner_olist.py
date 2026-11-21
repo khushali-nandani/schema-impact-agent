@@ -4,6 +4,7 @@ Needs the Olist CSV files in benchmarks/olist/data (see its DATA.md) and `dbt de
 """
 
 import hashlib
+import shutil
 from pathlib import Path
 
 import pytest
@@ -11,10 +12,16 @@ import pytest
 from schema_impact.evals.dbt_runner import run_baseline, run_case
 from schema_impact.evals.mutations import (
     MODEL_DROP_COLUMN,
+    MODEL_LOGIC,
     MODEL_RENAME_COLUMN,
+    SOURCE_CHANGE_TYPE,
+    SOURCE_DROP_COLUMN,
+    SOURCE_RENAME_COLUMN,
     Recipe,
+    _rewrite_csv,
     generate_mutations,
 )
+from schema_impact.evals.olist_recipes import OLIST_RECIPES
 
 pytestmark = pytest.mark.bench
 
@@ -99,3 +106,78 @@ def test_the_original_csv_files_are_not_touched(case_and_hashes):
 
 def test_the_case_folder_is_removed_afterwards(case_and_hashes, workdir):
     assert [p.name for p in workdir.iterdir()] == ["baseline"]
+
+
+# --- the mutations of the sources and the recipes -------------------------------------------------
+
+
+@pytest.fixture(scope="module")
+def all_mutations():
+    return generate_mutations(OLIST, OLIST_RECIPES)
+
+
+def test_every_recipe_applies_to_the_project(all_mutations):
+    logic = [m for m in all_mutations if m.kind == MODEL_LOGIC]
+    assert len(logic) == len(OLIST_RECIPES) >= 20
+
+
+def test_every_source_column_has_a_rename_and_a_drop(all_mutations):
+    kinds = [m.kind for m in all_mutations]
+    assert kinds.count(SOURCE_RENAME_COLUMN) == kinds.count(SOURCE_DROP_COLUMN) == 52
+    assert kinds.count(SOURCE_CHANGE_TYPE) > 0
+
+
+def test_the_ids_of_all_mutations_are_unique(all_mutations):
+    ids = [m.id for m in all_mutations]
+    assert len(ids) == len(set(ids))
+
+
+def test_rewriting_a_csv_file_without_a_change_gives_the_same_bytes(tmp_path):
+    """The check that a dropped column is the only difference: any other byte that moved would
+    show up as a model whose output changed for the wrong reason."""
+    for original in sorted((OLIST / "data").glob("*.csv")):
+        copy = tmp_path / original.name
+        shutil.copyfile(original, copy)
+        _rewrite_csv(copy, set())
+        assert copy.read_bytes() == original.read_bytes(), original.name
+
+
+def case_for(baseline, all_mutations, workdir, mutation_id):
+    mutation = next(m for m in all_mutations if m.id == mutation_id)
+    return run_case(OLIST, baseline, mutation, workdir)
+
+
+def test_renaming_a_source_column_breaks_its_staging_model_and_what_reads_it(
+    baseline, all_mutations, workdir
+):
+    case = case_for(
+        baseline, all_mutations, workdir, "source_rename_column:olist__orders.order_status"
+    )
+    assert case.error is None
+    assert case.labels["stg_olist__orders"] == "breaking"
+    assert case.labels["fct_orders"] == "breaking"  # skipped because its input failed
+    assert case.labels["dim_sellers"] == "safe"
+    assert case.after.schema["olist__orders"].keys() >= {"order_status_v2"}
+
+
+def test_dropping_a_source_column_breaks_its_staging_model(baseline, all_mutations, workdir):
+    case = case_for(
+        baseline, all_mutations, workdir, "source_drop_column:olist__sellers.seller_city"
+    )
+    assert case.error is None
+    assert case.labels["stg_olist__sellers"] == "breaking"
+    assert "seller_city" not in case.after.schema["olist__sellers"]
+
+
+def test_reading_a_column_as_varchar_shows_up_in_the_schema_of_the_project(
+    baseline, all_mutations, workdir
+):
+    case = case_for(baseline, all_mutations, workdir, "source_change_type:olist__order_items.price")
+    assert case.error is None
+    assert case.after.schema["olist__order_items"]["price"] == "VARCHAR"
+    assert baseline.project.schema["olist__order_items"]["price"] == "DOUBLE"
+    assert set(case.labels) == set(case.statuses)  # nothing is left out: no model is edited
+
+
+def test_the_original_csv_files_are_still_untouched_after_all_of_it(all_mutations):
+    assert len(csv_hashes()) == 9
