@@ -1,8 +1,3 @@
-- `ModelChanged` is still coarse where it is reported: it marks every column of the model. That is the case for an edit that changes the rows (a filter, a join, a grouping, a changed column that feeds one, an ORDER BY that reads one), and for anything `changed_outputs` does not understand. Whether such an edit changes any row of the output depends on the data, which the tool does not see, so these stay false alarms when they change nothing.
-- A column that is computed differently but whose value is the same on every row (for example `x + 0` for `x`) is still reported as changed: the comparison is of the SQL, not of results.
-- The narrowing only reads a model's SQL: a `UNION` makes the answer `None`, and a subquery is handled by being cautious (it sees every change before it), not by tracing it.
-- Dropping a column the query orders by is a `ModelChanged` (ORDER BY then means a table column instead of an output alias); it errs on the side of reporting.
-
 # Architecture
 
 > Status: design document. Implementation starts at L0 (see [Roadmap](#roadmap)).
@@ -172,8 +167,10 @@ If the rows of the final select changed, the answer is `None`; so it is for a di
 - Added columns, tables and models are not reported.
 - A dropped table or model is traced only through the columns its readers use. A reader that touches no column, such as `SELECT COUNT(*) FROM order_items`, has no lineage edge and is not flagged. This is a known false negative; a table-level "reads" dependency would fix it.
 - Model logic changes are detected after normalising the SQL, but not described (which filter changed is not extracted).
-- `ModelChanged` is coarse: it marks every column of the model, so a definition changed in one column flags the readers of all its columns. On the benchmark this is 3 of the 7 remaining false alarms.
-- A definition changed inside a CTE is a `ModelChanged`, and so is dropping a column the query orders by (ORDER BY then means a table column instead of an output alias). Both err on the side of reporting.
+- `ModelChanged` is still coarse where it is reported: it marks every column of the model. That is the case for an edit that changes the rows (a filter, a join, a grouping, a changed column that feeds one, an ORDER BY that reads one), and for anything `changed_outputs` does not understand. Whether such an edit changes any row of the output depends on the data, which the tool does not see, so these stay false alarms when they change nothing.
+- A column that is computed differently but whose value is the same on every row (for example `x + 0` for `x`) is still reported as changed: the comparison is of the SQL, not of results.
+- The narrowing only reads a model's SQL: a `UNION` makes the answer `None`, and a subquery is handled by being cautious (it sees every change before it), not by tracing it.
+- Dropping a column the query orders by is a `ModelChanged` (ORDER BY then means a table column instead of an output alias); it errs on the side of reporting.
 
 ## Agent (L2)
 
