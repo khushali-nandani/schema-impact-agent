@@ -18,10 +18,10 @@ wrong narrowing would hide a real change, and None is what the tool did before.
 from pathlib import Path
 
 import pytest
-from schema_impact.core.logicdiff import changed_outputs
 
 from schema_impact.adapters.dbt_manifest import load_dbt_project
 from schema_impact.core.lineage import UNKNOWN_TYPE, model_outputs
+from schema_impact.core.logicdiff import changed_outputs
 
 SCHEMA = {
     "orders": {"id": "INTEGER", "customer_id": "INTEGER", "amount": "DOUBLE", "status": "VARCHAR"},
