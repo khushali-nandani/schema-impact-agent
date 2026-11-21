@@ -13,128 +13,21 @@ each `needs_review` impact is; a breaking impact is never put to a model.
 """
 
 import argparse
-import json
 import sys
 from collections.abc import Sequence
-from dataclasses import asdict, dataclass
 
 from sqlglot.errors import SqlglotError
 
 from schema_impact.adapters.dbt_manifest import load_dbt_project
-from schema_impact.agent.describe import (
-    breaking_explanation,
-    breaking_fix,
-    describe_change,
-    describe_place,
-    describe_roles,
-)
-from schema_impact.agent.judge import HIGH, Judge, Judgment
-from schema_impact.core.changes import Change, diff_projects
-from schema_impact.core.impact import BREAKING, NEEDS_REVIEW, Impact, compute_impact
-from schema_impact.core.lineage import ColumnRef
+from schema_impact.agent.judge import Judge
+from schema_impact.core.impact import BREAKING, NEEDS_REVIEW
 from schema_impact.core.registry import DEFAULT_DIALECT, Project, load_project
+from schema_impact.formats import format_json, format_text
+from schema_impact.review import exit_code, review
 
 ADAPTERS = ("sql", "dbt")
 FORMATS = ("text", "json")
 FAIL_ON = (BREAKING, NEEDS_REVIEW, "never")
-
-
-@dataclass(frozen=True)
-class Item:
-    """An affected place and, when there is one, what was said about it."""
-
-    impact: Impact
-    judgment: Judgment | None
-
-
-@dataclass(frozen=True)
-class Review:
-    changes: list[Change]
-    items: list[Item]
-
-    def count(self, effect: str) -> int:
-        return sum(1 for item in self.items if item.impact.effect == effect)
-
-
-def review(before: Project, after: Project, judge: Judge | None = None) -> Review:
-    """What changed between two projects and what it affects, with the judge's view if given."""
-    changes = diff_projects(before, after)
-    items = []
-    for impact in compute_impact(before, changes):
-        judgment = None
-        if impact.effect == BREAKING:
-            judgment = Judgment(HIGH, breaking_explanation(impact), breaking_fix(impact.change))
-        elif judge is not None:
-            judgment = judge.judge(impact)
-        items.append(Item(impact, judgment))
-    return Review(changes, items)
-
-
-def exit_code(result: Review, fail_on: str) -> int:
-    """1 if anything is at or above the threshold, else 0."""
-    if fail_on == BREAKING:
-        return 1 if result.count(BREAKING) else 0
-    if fail_on == NEEDS_REVIEW:
-        return 1 if result.items else 0
-    return 0
-
-
-def format_text(result: Review) -> str:
-    lines = ["# Schema change review", "", "## Changes"]
-    lines += [f"- {describe_change(change)}" for change in result.changes] or ["- none"]
-
-    lines += ["", "## Impact"]
-    if not result.items:
-        lines.append("No downstream impact. This change is safe.")
-    for item in result.items:
-        impact, judgment = item.impact, item.judgment
-        risk = f", risk {judgment.risk}" if judgment else ""
-        lines.append(
-            f"- {describe_place(impact)}: {impact.effect}{risk} (used in {describe_roles(impact)})"
-        )
-        if judgment:
-            lines.append(f"  - Why: {judgment.explanation}")
-            lines.append(f"  - Fix: {judgment.fix}")
-
-    lines += [
-        "",
-        "## Summary",
-        f"{result.count(BREAKING)} breaking, {result.count(NEEDS_REVIEW)} needs review.",
-    ]
-    return "\n".join(lines)
-
-
-def format_json(result: Review) -> str:
-    data = {
-        "changes": [_change_dict(change) for change in result.changes],
-        "impacts": [_impact_dict(item) for item in result.items],
-        "summary": {
-            "breaking": result.count(BREAKING),
-            "needs_review": result.count(NEEDS_REVIEW),
-        },
-    }
-    return json.dumps(data, indent=2)
-
-
-def _change_dict(change: Change) -> dict:
-    return {"kind": type(change).__name__, **asdict(change)}
-
-
-def _impact_dict(item: Item) -> dict:
-    impact = item.impact
-    return {
-        "change": _change_dict(impact.change),
-        "model": impact.model,
-        "column": impact.column,
-        "effect": impact.effect,
-        "roles": sorted(impact.roles),
-        "path": [_ref(ref) for ref in impact.path],
-        "judgment": asdict(item.judgment) if item.judgment else None,
-    }
-
-
-def _ref(ref: ColumnRef) -> str:
-    return ref.table if ref.column is None else f"{ref.table}.{ref.column}"
 
 
 def _load(path: str, adapter: str, dialect: str) -> Project:
