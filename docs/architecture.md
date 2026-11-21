@@ -136,16 +136,22 @@ Window `PARTITION BY` / `ORDER BY` columns are `select` edges to the window's ou
 | Change | Effect |
 |---|---|
 | rename, drop, dropped table, dropped model | `breaking` |
-| type change, changed model logic | `needs_review` |
+| type change to text where a model gives the column to `SUM`, `AVG`, `date_diff` or arithmetic (DuckDB) | `breaking` |
+| any other type change, changed model logic | `needs_review` |
 | nothing in the lineage graph depends on it | no impact, i.e. safe |
 
 The effect is deterministic and passes unchanged to every model further down the chain. `needs_review` is where a later layer (L2) judges how risky the change is.
 
 A breaking impact means the affected model's query fails, so that model cannot be built and every model that reads it is affected too, whichever of its columns it uses. A change that only needs review (a type change) follows the columns: only what is computed from the changed column is affected.
 
+**A column that becomes text.** A model that only selects it is fine; `SUM(amount)`, `AVG`, `date_diff` or `amount / 100` on text fail on DuckDB, so the model cannot be built and dbt skips everything that reads it. `core/columnuse.py` says, for every (source column, output column) pair of a model, whether the output is the column itself (`PASS`), the column is the direct argument of one of those functions or of plain arithmetic (`STRICT`), or something else (`OTHER`: a cast, `ROUND`, `COUNT`, `MIN`, a comparison, a CASE condition). Across the CTEs of one model the use closest to the table decides unless it is `PASS`. `compute_impact` follows the text type along `PASS` edges; a model that gives it to a `STRICT` use becomes breaking, and so does everything that reads it. A cast stops the trail: `cast(order_estimated_delivery_date as date)` hands a DATE to the models after it.
+
 For a model whose SQL was edited, `diff_projects` also compares its output columns (read from the SQL). A renamed or dropped output column is a `ColumnRenamed` / `ColumnDropped` of that model, so the models reading it are breaking. If the edit only changed the shape of the final select (the rest of the query is identical and the remaining columns are computed the same way), no `ModelChanged` is reported, since readers are then affected only through the columns that changed. Anything else, including a new SQL that no longer resolves, is a `ModelChanged`.
 
 ### Known change-detection limits
+
+- The text rule is measured on DuckDB only (other dialects, Snowflake for one, may convert text to numbers implicitly, so they keep "a type change needs review"; this was not measured), covers a change *to* text only, and knows only `SUM`, `AVG`, `date_diff` and `+ - * /`. Its evidence is 6 `SUM`/`AVG` and 2 `date_diff` failures on Olist and one `/` failure on jaffle_shop, and no case where it fires and dbt succeeds. A text column that reaches `MAX`, a window or a function we do not list stays `needs_review`.
+- A CTE that is a `UNION` is not traced by `column_uses`, so a text column behind one is not followed.
 
 - A rename is guessed: one column removed and one added in the same table, at the same position, with the same type.
 - Added columns are ignored (they cannot break anything downstream).
@@ -180,7 +186,7 @@ A review needs approval when any impact is breaking or the judge says `high`. Sa
 
 ### What the local model does in practice
 
-Run on the toy project with `qwen2.5-coder:7b` (`examples/demo_ollama.py`), changing `orders.amount` from DECIMAL to VARCHAR: valid JSON, about 20 seconds for three impacts on a laptop, and all three were judged `high`. The explanations are plausible but not reliable: they state that `SUM` "will fail" although the deterministic layer found that nothing fails, call a type change "data corruption", and every fix is "revert the change". So the model is not discriminating between impacts here and can overstate. Measuring how often it is right is what the L3 benchmark is for.
+Run on the toy project with `qwen2.5-coder:7b` (`examples/demo_ollama.py`), changing `orders.amount` from DECIMAL to VARCHAR: valid JSON, about 20 seconds for three impacts on a laptop, and all three were judged `high`. The explanations are plausible but not reliable: they state that `SUM` "will fail" although the deterministic layer then found that nothing fails (it was right: summing text fails on DuckDB, which the tool reports as breaking since the text-type fix, and the demo now retypes `amount` to INTEGER, a change that really does only shift the numbers), call a type change "data corruption", and every fix is "revert the change". So the model is not discriminating between impacts here and can overstate. Measuring how often it is right is what the L3 benchmark is for.
 
 ### Known agent limits
 
@@ -229,7 +235,7 @@ What the fixes were, and what found them:
 - **B.** Renaming or dropping an output column of a model was reported only as "the SQL changed", so 30 breaking models were only `needs_review`.
 - **D and C1 together.** C1 alone made 6 breaking models disappear: a model-level "changed" flag had been hiding that readers use some columns only in a GROUP BY or JOIN inside a CTE, which the lineage did not trace. D traces them, then C1 stopped flagging readers that never use a renamed or dropped column.
 
-**The LLM judge.** The 34 pairs that stay `needs_review` (3 breaking, 24 silent, 7 safe) were put to `qwen2.5-coder:7b` through `OllamaJudge`. It answered `high` for all 93 impacts: none `low`, none a parse-failure fallback. So it flags every silent model but also all 7 safe ones, and the metrics with the judge equal the deterministic ones. This is one 7B model with one prompt on 7 safe pairs; it says nothing about larger models or other prompts.
+**The LLM judge.** The 34 pairs that stay `needs_review` (3 breaking, 24 silent, 7 safe) were put to `qwen2.5-coder:7b` through `OllamaJudge`. (Since the text-type fix described below, 3 of those 34 are breaking and no longer reach the judge.) It answered `high` for all 93 impacts: none `low`, none a parse-failure fallback. So it flags every silent model but also all 7 safe ones, and the metrics with the judge equal the deterministic ones. This is one 7B model with one prompt on 7 safe pairs; it says nothing about larger models or other prompts.
 
 ### Limits of the benchmark
 
@@ -263,6 +269,30 @@ Affected precision is 96.0% (1420/1479) and F1 97.4%; no model was called breaki
 
 - **Type changes.** 16 models that dbt fails are predicted `none`, all in the far marts (`category_satisfaction`, `customer_rfm`, `customer_satisfaction`, `seller_performance`); why the change does not reach them has not been analysed yet. Another 26 breaking pairs are predicted `needs_review`: a type change is never called breaking, although dbt fails in these cases. All 36 silent type-change pairs are flagged.
 - **False alarms (59).** 56 come from 18 of the 24 logic edits and 3 from one type change: the tool flags readers of an edited model, and in these cases dbt's output for them did not change (for example `upper(order_status)` in `stg_olist__orders`, or an `inner join` where no row was lost). Whether the tool could tell these apart without the data has not been analysed yet.
+
+### After the first fix (tuned, not held-out)
+
+The 16 misses and the 26 type-change pairs called `needs_review` were one cause: in all 8 type-change cases that break something, the tool had flagged the model that really fails, but only as `needs_review`, and `needs_review` follows columns, so the models that read it and do not use the changed column got `none`. dbt skips them. A table of how the retyped column is used against what dbt did (models skipped because something upstream failed left out):
+
+| The reader uses the text column | dbt failed it | dbt built it |
+|---|---|---|
+| only selects it, compares it, `COUNT`, `MIN`/`MAX` | 0 | 50 |
+| `SUM` or `AVG` | 6 | 0 |
+| `date_diff` | 2 | 1 (the column had been cast to DATE, so it was not text there) |
+| arithmetic on the text column (`amount / 100`, on jaffle_shop) | 1 | 0 |
+
+The columns were matched by name, so one more Olist case that built (a division of an integer made by `date_diff`) does not read the text column and is not counted.
+
+That is the rule described under change detection above. Scored again, with the code at the commit of that fix:
+
+| Kind | Affected recall | Breaking recall |
+|---|---|---|
+| source type change, held-out | 79.5% (62/78) | 0% (0/42) |
+| source type change, after the fix | **100%** (78/78) | **100%** (42/42) |
+
+Every other kind is unchanged to the pair. Overall on Olist: breaking recall 96.9% -> 100% (1358/1358), affected recall 98.9% -> 100% (1436/1436), affected F1 97.4% -> 98.0%, no model called breaking that is not (1358/1358), and the 59 false alarms are as before. On jaffle_shop the 3 breaking pairs that had stayed `needs_review` are now breaking (breaking recall 90/93 -> 93/93, precision 100%).
+
+These are tuned numbers: the rule was found by reading the errors of the held-out run, so Olist can no longer say how well the tool does on a new project. The limits of the rule are listed under the change-detection limits. What is left is the false alarms: 39 of the 56 on logic edits come from 13 edits that change one output column, where the tool reports the whole model as changed, 4 from a pure refactor (a renamed CTE), and 13 from filters and joins that happen to change no rows; the last group cannot be told apart without the data. Not done yet.
 
 **Limits.** Two projects are not a sample. 78 pairs are silent. 268 of the 420 cases are the easy model-column edits, so report by kind. "Same output" is judged on Olist's own data, which is not in the repository (CC BY-NC-SA 4.0). The ground truth is built with DuckDB on one thread: with several threads `customer_rfm` (an `ntile` over tied values) differs on every build and made 258 pairs look "silent" in a first build, which was discarded. From the commit after this result, any fix is made by reading these errors, so the later rows are tuned and are labelled so.
 

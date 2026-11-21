@@ -138,3 +138,19 @@ The 120 MB of CSV files are linked, one by one, into each case copy instead of c
 ## 34. The held-out result is published before the fixes
 
 Writing the first Olist result into the README and the architecture notes before any change makes it checkable that the later, tuned numbers are not passed off as held-out ones. The result is mixed on purpose: overall F1 matches jaffle_shop, but type changes (79.5% of affected pairs found, never called breaking) are a real weak spot that the overall number hides.
+
+## 35. A column that becomes text is breaking where a model sums or divides it, not everywhere
+
+Decision 15 made every type change `needs_review`. On Olist that missed 16 models dbt fails: the tool flagged the model that fails but only as `needs_review`, which follows columns, so the readers that skip because of it got `none`. Calling every type change breaking would be wrong too: of the 24 type-change cases, 450 of 528 pairs were safe. What separates them is what the model does with the column. Selecting, comparing, counting or taking the min of text never failed (50 of 50 built); `SUM`, `AVG` and `date_diff` failed every time the column was still text (6 and 2), and so did `amount / 100` on jaffle_shop (1). So only a model that gives the text column to one of those becomes breaking, and like any breaking impact it takes its readers with it and is explained from templates, not judged by the model (decision 17).
+
+## 36. The text type follows pass-through columns and a cast stops it
+
+On Olist one `date_diff` over a column retyped to text still built: staging had already done `cast(... as date)`, so the model after it got a DATE. A rule that looked at the function alone would have called it breaking. `column_uses` therefore says for each (source column, output column) whether the output is the column itself, a strict use, or something else, and the text type is followed only along the first kind. The cautious order when one column reaches an output several ways is strict, then other, then pass.
+
+## 37. The text rule applies on DuckDB only
+
+It was measured on DuckDB, where text given to `SUM` or arithmetic is an error. Snowflake, for one, may convert text to numbers implicitly, so the same change could build there; that was not measured either way. Other dialects keep decision 15 until someone measures them. The rule is also only for a change to text, and lists only the functions with evidence, so a type change it does not recognise stays `needs_review`: the misses it can leave are errors of recall, not a wrong "breaking".
+
+## 38. The numbers after the text rule are labelled as tuned
+
+The rule came from reading the errors of the held-out Olist run, so the Olist figures after it are not held-out (decision 29): the results table keeps the held-out row and shows the new one beside it, with the text that says so. What the second run does show is that the rule cost nothing: no model is called breaking that is not, and no other kind of case changed. Its jaffle_shop result is also not held-out, and the arithmetic part of the rule rests on one jaffle case.
