@@ -170,3 +170,24 @@ Qualify writes an alias used in WHERE, GROUP BY, HAVING or QUALIFY as the expres
 ## 42. The numbers after the column rule are labelled as tuned
 
 As with the text rule (decision 38), the rule came from reading the errors of the held-out Olist run, so the Olist figures after it are not held-out and are published beside the held-out row. What the second run shows is that it cost nothing: no silent model is missed, no model is called breaking that is not, and the false alarms fell from 59 to 16 (jaffle_shop 7 to 5). The 16 left are 13 logic edits that change rows and 3 from one type change; they were not analysed further.
+
+## 43. The exit code says pass, fail, or could not run
+
+A CI job needs one number. 0 is "nothing at or above `--fail-on`", 1 is "something is", 2 is "it could not run" (a missing folder or artifact, bad arguments). The default threshold is `breaking`: a changed column that only needs review is a prompt for a person, not a reason to block a merge. An exit code of 0, 1, 2 for "nothing, needs review, breaking" was the first idea; it would have made `--fail-on` impossible to express and it mixes up failing with erroring.
+
+## 44. A pull request is two commits, read with `git archive`
+
+The project at a ref is exported into a temporary folder with `git archive`, so the checkout, the index and the working tree are not touched and the command can run in any job. dbt artifacts (`target/`) are not in git, so for dbt the two folders are passed. A job that compiles the head has a manifest and no catalog, so the catalog of the base stands in for both. That assumes the pull request does not change the columns of a source table; one that does is not seen.
+
+## 45. One comment per pull request, found by a marker, and a refused comment is not a failed job
+
+A new comment on every push buries the review, so the first line of the comment is a hidden marker and the next push edits the comment it finds. A review with nothing downstream creates no comment (it would be noise), but still edits an old one, or the old warning would stay. A fork's token is read-only, and `pull_request_target` would give it a write token and the repository's secrets while running the pull request's code, so it is not used: when the comment is refused the review goes to the job summary and the job carries on. The cost is that a misconfigured token shows only as a warning. A name from the SQL that looks like `@someone` is broken with an invisible character, since the SQL comes from the pull request.
+
+## 46. The Action hands the exit code on, and its shell is tested outside GitHub
+
+If the review step failed on a breaking change, the comment step after it would not run and the one case that most needs a comment would have none. So the review step always succeeds and writes its exit code, the comment step runs unless that code is 2, and a last step fails the job with it. Values reach the scripts through `env:` only; a test refuses `${{ }}` in any script and another runs a branch name that is a shell command. Because an Action cannot be run without GitHub, each step's script is taken out of `action.yml` and run in bash against a temporary git repository and a local server that behaves like the comments API. What stays unverified is the runner itself, which is what the demo repository is for.
+
+## 47. The team conventions store was left out
+
+The roadmap had a file naming ignored and public models. It is the least necessary part of L5 and was skipped to finish and release the rest. If it is built, it has to be read from the base commit: a file read from the pull request lets its author write `ignore: ["*"]` and hide their own breaking changes, which is the kind of silent miss this tool exists to prevent.
+

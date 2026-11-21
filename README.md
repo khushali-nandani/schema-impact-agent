@@ -14,7 +14,7 @@ See [docs/architecture.md](docs/architecture.md) for the full problem statement 
 
 ## Status
 
-Early development. L0 (column lineage), L1 (change detection and impact), L2 (LangGraph agent with human approval) and L3 (benchmark) are done. L4 is in progress: the tool was scored once, untouched, on a second project (see Results), and two fixes have been made from what that showed; the numbers after them are labelled as tuned. The CLI and packaging come after.
+Early development. L0 (column lineage), L1 (change detection and impact), L2 (LangGraph agent with human approval), L3 (benchmark) and L4 (a second, held-out benchmark project and two fixes made from what it showed, the numbers after them labelled as tuned) are done. L5 is built and tested against a fake GitHub but has not been run on GitHub yet: a command line (`schema-impact diff`) and a GitHub Action that comments the review on a pull request.
 
 | Level | Scope | Status |
 |---|---|---|
@@ -22,8 +22,8 @@ Early development. L0 (column lineage), L1 (change detection and impact), L2 (La
 | L1 | Change detection and impact analysis | Done |
 | L2 | LangGraph agent with human approval | Done |
 | L3 | Benchmark on jaffle_shop with mutation testing | Done |
-| L4 | Adapters (dbt manifest, CSV sources) and a second, held-out benchmark project | In progress |
-| L5 | CLI and GitHub Action | Planned |
+| L4 | Adapters (dbt manifest, CSV sources) and a second, held-out benchmark project | Done |
+| L5 | CLI and GitHub Action that comments on pull requests | Built; first run on GitHub pending |
 
 ## Results
 
@@ -82,6 +82,42 @@ The fix was found by reading the Olist errors, so the Olist column is not a held
 | False alarms | 59 | **16** | 7 | **5** |
 
 Nothing found before was lost. This is the step that could hide a real change, so besides the benchmark it is checked on data: 35 edits on a small DuckDB project (made-up rows), where the columns the tool did not report must have the same rows as before and every model that really changed must be flagged; none failed. The 16 left: 13 logic edits that change the rows of a model (joins and filters), which the SQL alone cannot settle, and 3 from one type change. Still tuned numbers, not a held-out estimate. Reports: [benchmarks/results](benchmarks/results/README.md).
+
+## Use it
+
+Not on PyPI yet: clone the repository and `uv sync`.
+
+```bash
+# two project folders (models/*.sql and schema.sql), or a dbt project's target/ artifacts
+uv run schema-impact diff before/ after/
+uv run schema-impact diff before/ after/ --adapter dbt --format json
+
+# two commits of a repository, nothing is checked out
+uv run schema-impact diff --base main --head HEAD --project-dir analytics/warehouse --format markdown
+```
+
+It lists what changed and which models and columns that affects (`breaking` or `needs_review`), as text, JSON or a Markdown pull request comment. The exit code is 0 when nothing is at or above `--fail-on` (default `breaking`, or `needs_review`, or `never`), 1 when something is, and 2 when it could not run. No model is involved unless you pass `--judge ollama`, which only ever judges `needs_review` impacts.
+
+### As a GitHub Action
+
+```yaml
+on: pull_request
+permissions:
+  contents: read
+  pull-requests: write
+jobs:
+  schema-impact:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          fetch-depth: 0          # the base commit must be there
+      - uses: khushali-nandani/schema-impact-agent@main
+```
+
+It comments once per pull request and edits that comment on every push; a review with nothing downstream makes no new comment but corrects an old one. The check fails on a breaking change (`fail-on`). On a pull request from a fork the token is read-only, so the review goes to the job summary and the job does not fail. For dbt, give `before-dir` (the artifacts of the base) and `after-dir` (after `dbt compile`); the catalog of the base is used when the head has none, so a pull request that changes a source table's columns is not seen. [examples/pr_demo](examples/pr_demo/README.md) is a repository to try it on, with the comment each of its two pull requests should get.
+
+What is not checked: the Action has only run against a fake GitHub API and in local bash, not on GitHub. A team conventions file (ignored or public models) was left out.
 
 ## Development
 

@@ -96,7 +96,7 @@ Dependencies point one way: `agent` and `adapters` may import `core`; `core` nev
 | L2 | LangGraph agent: severity, explanation, fix suggestion, approval interrupt, checkpointer | Yes | Toy project |
 | L3 | Benchmark: automatic mutations on jaffle_shop_duckdb, ground truth from `dbt build` and output diff, precision/recall | Yes | 100+ cases |
 | L4 | Adapters: plain SQL folder, dbt manifest, other dialects; real projects | Yes | Real projects |
-| L5 | Packaging: CLI, GitHub Action that comments on PRs, team conventions store | Yes | End-to-end demo |
+| L5 | Packaging: CLI, GitHub Action that comments on PRs (a team conventions store was left out) | No | A fake GitHub API and the Action's own scripts; a demo repository for the real run |
 
 ## Evaluation approach
 
@@ -201,8 +201,8 @@ Run on the toy project with `qwen2.5-coder:7b` (`examples/demo_ollama.py`), chan
 
 ### Known agent limits
 
-- Paused reviews are kept in memory only: they survive a restart of the graph object, not of the process (SQLite comes with the CLI in L5).
-- The report lists every affected column and the whole-model entry separately, so a chain produces a long report. Grouping by model is left for L5.
+- Paused reviews are kept in memory only: they survive a restart of the graph object, not of the process (the CLI of L5 is one-shot and never pauses, so SQLite was not needed).
+- The report lists every affected column and the whole-model entry separately, so a chain produces a long report. The Markdown report of L5 groups them by model; the text report still lists every column.
 - Each `needs_review` impact is judged separately, so a chain costs one model call per affected place.
 - An approval answer is a boolean; there is no reviewer note yet.
 
@@ -330,3 +330,21 @@ These are tuned numbers like the ones before: the rule was found by reading the 
 **Limits.** Two projects are not a sample. 78 pairs are silent. 268 of the 420 cases are the easy model-column edits, so report by kind. "Same output" is judged on Olist's own data, which is not in the repository (CC BY-NC-SA 4.0). The ground truth is built with DuckDB on one thread: with several threads `customer_rfm` (an `ntile` over tied values) differs on every build and made 258 pairs look "silent" in a first build, which was discarded. From the commit after this result, any fix is made by reading these errors, so the later rows are tuned and are labelled so.
 
 Reproduce: put the CSV files in `benchmarks/olist/data` (see its `DATA.md`), `dbt deps` in that folder, then `python -m schema_impact.evals.build_dataset --benchmark olist` (about an hour) and `python -m schema_impact.evals.score --dataset benchmarks/dataset/olist.json`.
+
+## Command line and GitHub Action (L5)
+
+The core is a library; L5 makes it something a pull request can run.
+
+**`schema-impact diff`** (`cli.py`) loads two projects through an adapter, runs `diff_projects` and `compute_impact`, and writes the result as text, JSON or Markdown (`formats.py`). `review.py` holds the review itself (changes, impacts, an optional judgment per impact) and the exit code: 0, or 1 when an impact is at or above `--fail-on`, and 2 when it could not run. The judge is only asked about `needs_review` impacts; a breaking one is explained from a template, as in the agent.
+
+**Two commits instead of two folders** (`gitrefs.py`): `--base REF --head REF` exports the project at each ref with `git archive` into a temporary folder, so nothing is checked out. The artifacts of a dbt project are not in git, so for dbt the two folders are passed. A pull request job normally has the artifacts of the base and compiles the head with `dbt compile`, which writes a manifest but no catalog; the catalog of the base is then used for both. That is right while the pull request does not change the columns of a source table, and it does not see one that does.
+
+**The comment** (`formats.format_markdown`, `github.py`). The affected places are grouped by model, a fix is listed once however many models it is for, and a table is cut at 50 rows so a comment stays under GitHub's 65536 characters. The first line is a hidden marker; `schema-impact comment FILE` finds the comment with that marker and edits it, so a push updates the comment of the one before. A review with nothing downstream makes no new comment but corrects an old one. Names from the SQL that look like `@someone` are broken with an invisible character so nobody is notified. If the comment is refused (a fork's token is read-only) the review is written to the job summary and the job does not fail.
+
+**The Action** (`action.yml`, composite): install the tool, make the review and hand its exit code on instead of failing, comment, and finally fail the job with that exit code, so a failing check still shows its comment. Inputs reach the scripts through `env:`, never through `${{ }}`, so a branch name cannot inject shell. The workflow asks for `contents: read` and `pull-requests: write` and runs on `pull_request`, never `pull_request_target`, which would run a pull request's code with the repository's secrets.
+
+**How it is tested.** The comment code talks to a real HTTP server on localhost that behaves like the GitHub comments API. The Action's shell steps are taken out of `action.yml` and run in bash against a real temporary git repository and that server. The demo repository's patches are applied in a temporary repository and the comment its README shows is the one the tool produces. The wheel is built and what is installed from it is run (`pytest -m package`).
+
+**Not checked, because it needs GitHub:** that the Action installs and runs on a runner (`setup-python`, `github.action_path`), the permissions of the token, how the comment looks, the summary fallback on a fork, and using the Action from a private repository. [examples/pr_demo](../examples/pr_demo/README.md) is for that.
+
+**Left out:** a team conventions store (a file that names ignored or public models). If it is added it must be read from the base commit, not from the pull request, or a pull request could hide its own impacts. Also not built: an interactive approval in the CLI, dbt exposures as public models, and anything that connects to a warehouse or runs dbt.
