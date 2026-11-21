@@ -80,13 +80,15 @@ MARKER = "<!-- schema-impact-agent -->"  # lets a job find its own comment and u
 MAX_ROWS = 50  # a table is cut here: a comment is at most 65536 characters
 MAX_NOTES = 20
 MAX_CELL = 300
+NO_IMPACT_HEADING = "## Schema impact: none"
 _TITLES = {BREAKING: "Breaking", NEEDS_REVIEW: "Needs review"}
 
 
 def format_markdown(result: Review) -> str:
     """The review as a pull request comment, the affected places grouped by model."""
     groups = {effect: _group(result, effect) for effect in (BREAKING, NEEDS_REVIEW)}
-    lines = [MARKER, f"## Schema impact: {_headline(groups)}", "", "**Changes**"]
+    headline = _headline(groups)
+    lines = [MARKER, f"## Schema impact: {headline}", "", "**Changes**"]
     lines += [f"- {describe_change(change)}" for change in result.changes] or ["- none"]
 
     if not result.items:
@@ -98,7 +100,14 @@ def format_markdown(result: Review) -> str:
                 lines += ["", "**How to fix**", *_fixes(result)]
             else:
                 lines += _notes(result)
-    return "\n".join(lines) + "\n"
+    text = "\n".join(lines) + "\n"
+    # a name from the SQL that looks like @someone would notify them: break the mention
+    return text.replace("@", "@\u200b")
+
+
+def has_impact(markdown: str) -> bool:
+    """False for a review that found nothing downstream (it is not worth a comment of its own)."""
+    return NO_IMPACT_HEADING not in markdown
 
 
 class _Model:

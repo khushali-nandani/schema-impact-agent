@@ -13,6 +13,7 @@ each `needs_review` impact is; a breaking impact is never put to a model.
 """
 
 import argparse
+import os
 import sys
 import tempfile
 from collections.abc import Sequence
@@ -24,7 +25,8 @@ from schema_impact.adapters.dbt_manifest import load_dbt_project
 from schema_impact.agent.judge import Judge
 from schema_impact.core.impact import BREAKING, NEEDS_REVIEW
 from schema_impact.core.registry import DEFAULT_DIALECT, load_project
-from schema_impact.formats import format_json, format_markdown, format_text
+from schema_impact.formats import format_json, format_markdown, format_text, has_impact
+from schema_impact.github import CommentError, pr_number, upsert_comment, write_summary
 from schema_impact.gitrefs import export_ref
 from schema_impact.review import exit_code, review
 
@@ -72,13 +74,54 @@ def _parser() -> argparse.ArgumentParser:
         default="none",
         help="ask a local model how risky each needs_review impact is (default: none)",
     )
+    comment = commands.add_parser(
+        "comment",
+        help="put a Markdown review on the pull request this GitHub Actions job is for",
+    )
+    comment.add_argument("file", help="the review (from diff --format markdown), or - for stdin")
     return parser
+
+
+def _comment(args: argparse.Namespace) -> int:
+    """Comment on the pull request. Failing to comment does not fail the job (forks cannot)."""
+    for name in ("GITHUB_TOKEN", "GITHUB_REPOSITORY", "GITHUB_EVENT_PATH"):
+        if not os.environ.get(name):
+            print(
+                f"error: {name} is not set; this runs inside a GitHub Actions job", file=sys.stderr
+            )
+            return 2
+    try:
+        body = sys.stdin.read() if args.file == "-" else Path(args.file).read_text()
+    except OSError as error:
+        print(f"error: {error}", file=sys.stderr)
+        return 2
+
+    try:
+        action = upsert_comment(
+            os.environ.get("GITHUB_API_URL") or "https://api.github.com",
+            os.environ["GITHUB_TOKEN"],
+            os.environ["GITHUB_REPOSITORY"],
+            pr_number(os.environ["GITHUB_EVENT_PATH"]),
+            body,
+            create_if_missing=has_impact(body),
+        )
+    except CommentError as error:
+        written = write_summary(body, os.environ.get("GITHUB_STEP_SUMMARY"))
+        where = "the job summary" if written else "the log"
+        print(f"warning: could not comment ({error}); the review is in {where}", file=sys.stderr)
+        if not written:
+            print(body, end="")
+        return 0
+    print(f"comment {action}")
+    return 0
 
 
 def main(argv: Sequence[str] | None = None, judge: Judge | None = None) -> int:
     """Run the command. `judge` lets a caller (or a test) pass one in instead of `--judge`."""
     parser = _parser()
     args = parser.parse_args(argv)
+    if args.command == "comment":
+        return _comment(args)
     if args.base and (args.before or args.after):
         parser.error("give two folders or --base, not both")
     if not args.base and not (args.before and args.after):
