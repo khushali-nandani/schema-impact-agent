@@ -180,16 +180,20 @@ def test_the_real_olist_project_loads_and_every_model_resolves():
 # column's type.
 
 PLAIN = "'data/olist_order_items_dataset.csv'"
-WITH_TYPES = "read_csv('data/olist_order_items_dataset.csv', types={'price': 'VARCHAR'})"
+# the benchmark writes the second form: braces cannot be used in a dbt source location
+WITH_TYPES = [
+    "read_csv('data/olist_order_items_dataset.csv', types={'price': 'VARCHAR'})",
+    "read_csv('data/olist_order_items_dataset.csv', types=struct_pack(price := 'VARCHAR'))",
+]
 
 
-@pytest.fixture
-def typed_project_dir(project_dir):
+@pytest.fixture(params=WITH_TYPES, ids=["struct-literal", "struct_pack"])
+def typed_project_dir(project_dir, request):
     """The same project, with order_items read through read_csv(..., types=...)."""
     manifest = project_dir / "target" / "manifest.json"
     text = manifest.read_text()
     assert PLAIN in text
-    manifest.write_text(text.replace(PLAIN, WITH_TYPES))
+    manifest.write_text(text.replace(PLAIN, request.param))
     return project_dir
 
 

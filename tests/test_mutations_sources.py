@@ -181,13 +181,15 @@ def retype(root: Path, table: str, column: str = "price", new_type: str = "VARCH
 
 
 def test_a_type_change_gives_the_table_its_own_read_csv_location(project):
+    # no braces: dbt renders the location as Jinja and then formats it with str.format_map, and
+    # both would take {'price': ...} for something to fill in. struct_pack has none.
     retype(project, "orders")
     text = (project / "models" / "_sources.yml").read_text()
     assert (
         "      - name: orders\n"
         "        meta:\n"
         "          external_location: \"read_csv('data/olist_orders_dataset.csv', "
-        "types={'price': 'VARCHAR'})\"\n"
+        "types=struct_pack(price := 'VARCHAR'))\"\n"
         '        description: "orders"\n'
     ) in text
 
@@ -199,6 +201,11 @@ def test_only_the_named_table_is_edited(project):
     # the neighbour with a similar name and the table with its own location are unchanged
     assert '      - name: order_items\n        description: "items"\n' in text
     assert '        meta:\n          external_location: "data/translation.csv"\n' in text
+
+
+def test_a_column_name_that_is_not_a_plain_identifier_is_refused(project):
+    with pytest.raises(MutationError, match="identifier"):
+        retype(project, "orders", column="has space")
 
 
 def test_a_table_that_already_has_its_own_location_is_refused(project):
