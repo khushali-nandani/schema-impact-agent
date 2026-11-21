@@ -28,6 +28,7 @@ from dataclasses import dataclass, replace
 from schema_impact.core.changes import (
     Change,
     ColumnDropped,
+    ColumnLogicChanged,
     ColumnRenamed,
     ColumnTypeChanged,
     ModelChanged,
@@ -97,6 +98,8 @@ def _starting_columns(
             return [ColumnRef(table, old)]
         case ColumnDropped(table, column) | ColumnTypeChanged(table, column, _, _):
             return [ColumnRef(table, column)]
+        case ColumnLogicChanged(model, column):
+            return [ColumnRef(model, column)]
         case TableDropped(table):
             return [ColumnRef(table, column) for column in project.schema.get(table, {})]
         case ModelChanged(model) | ModelDropped(model):

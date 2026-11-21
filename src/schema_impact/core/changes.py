@@ -20,6 +20,7 @@ from schema_impact.core.lineage import (
     model_top_selects,
     output_columns_best_effort,
 )
+from schema_impact.core.logicdiff import changed_outputs
 from schema_impact.core.registry import Model, Project, Schema
 
 
@@ -55,12 +56,26 @@ class ModelChanged:
 
 
 @dataclass(frozen=True)
+class ColumnLogicChanged:
+    """One output column of a model is computed differently; the rest of the model is as it was."""
+
+    model: str
+    column: str
+
+
+@dataclass(frozen=True)
 class ModelDropped:
     model: str
 
 
 Change = (
-    ColumnRenamed | ColumnDropped | ColumnTypeChanged | TableDropped | ModelChanged | ModelDropped
+    ColumnRenamed
+    | ColumnDropped
+    | ColumnTypeChanged
+    | TableDropped
+    | ModelChanged
+    | ColumnLogicChanged
+    | ModelDropped
 )
 
 
@@ -131,6 +146,11 @@ def _edited_model_changes(before: Project, after: Project, edited: list[str]) ->
     same and the columns that remain are computed the same way. Then the models that read it are
     only affected through the columns that changed.
 
+    When the set of output columns is the same, `changed_outputs` says which of them are computed
+    differently: one `ColumnLogicChanged` for each, or nothing if the edit changed no result (a
+    renamed CTE). When it cannot say, or the edit also renamed or dropped a column, the model as a
+    whole is reported as changed.
+
     Only edited models are looked at: a model that was not edited cannot have changed its own
     columns, and its SQL may no longer resolve against the new schema. When the new SQL of an
     edited model cannot be resolved, anything may have changed, so it is reported as changed.
@@ -138,6 +158,10 @@ def _edited_model_changes(before: Project, after: Project, edited: list[str]) ->
     if not edited:
         return []
     outputs = model_outputs(before)
+    # the schema the old SQL is read against: the source tables and the models' outputs as they were
+    old_schema: Schema = {table: dict(columns) for table, columns in before.schema.items()}
+    for name, columns in outputs.items():
+        old_schema[name] = dict.fromkeys(columns, UNKNOWN_TYPE)
     before_tops = model_top_selects(before)
     # the schema the new SQL is read against: the source tables as they are now, and the output
     # columns of the models, as they were or, once an edited model has been read, as they are now
@@ -162,9 +186,33 @@ def _edited_model_changes(before: Project, after: Project, edited: list[str]) ->
                 {model.name: dict.fromkeys(new_columns, UNKNOWN_TYPE)},
             )
         if not _only_the_output_shape_changed(before_tops.get(model.name), top, column_changes):
-            changes.append(ModelChanged(model.name))
+            changes.extend(
+                _logic_changes(
+                    before, after, model.name, old_schema, schema, new_columns, column_changes
+                )
+            )
         changes.extend(column_changes)
     return changes
+
+
+def _logic_changes(
+    before: Project,
+    after: Project,
+    name: str,
+    old_schema: Schema,
+    new_schema: Schema,
+    new_columns: list[str] | None,
+    column_changes: list[Change],
+) -> list[Change]:
+    """The model as a whole, or just the output columns whose logic changed when that is known."""
+    if new_columns is None or column_changes:
+        return [ModelChanged(name)]
+    changed = changed_outputs(
+        before.models[name].sql, after.models[name].sql, old_schema, new_schema, after.dialect
+    )
+    if changed is None:
+        return [ModelChanged(name)]
+    return [ColumnLogicChanged(name, column) for column in new_columns if column in changed]
 
 
 def _only_the_output_shape_changed(

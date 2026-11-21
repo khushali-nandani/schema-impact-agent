@@ -7,6 +7,7 @@ impacts (no model needed), and later as the facts handed to an LLM judge.
 from schema_impact.core.changes import (
     Change,
     ColumnDropped,
+    ColumnLogicChanged,
     ColumnRenamed,
     ColumnTypeChanged,
     ModelChanged,
@@ -31,6 +32,8 @@ def describe_change(change: Change) -> str:
             return f"Model {model} was dropped"
         case ModelChanged(model):
             return f"The SQL of model {model} changed"
+        case ColumnLogicChanged(model, column):
+            return f"The logic of {model}.{column} changed"
     raise TypeError(f"Unknown change: {change!r}")
 
 
