@@ -22,11 +22,11 @@ from schema_impact.adapters.dbt_manifest import load_dbt_project
 from schema_impact.agent.judge import Judge
 from schema_impact.core.impact import BREAKING, NEEDS_REVIEW
 from schema_impact.core.registry import DEFAULT_DIALECT, Project, load_project
-from schema_impact.formats import format_json, format_text
+from schema_impact.formats import format_json, format_markdown, format_text
 from schema_impact.review import exit_code, review
 
 ADAPTERS = ("sql", "dbt")
-FORMATS = ("text", "json")
+FORMATS = ("text", "json", "markdown")
 FAIL_ON = (BREAKING, NEEDS_REVIEW, "never")
 
 
@@ -78,5 +78,6 @@ def main(argv: Sequence[str] | None = None, judge: Judge | None = None) -> int:
         print(f"error: {error}", file=sys.stderr)
         return 2
 
-    print(format_json(result) if args.output == "json" else format_text(result))
+    text = {"json": format_json, "markdown": format_markdown}.get(args.output, format_text)(result)
+    print(text, end="" if text.endswith("\n") else "\n")
     return exit_code(result, args.fail_on)
