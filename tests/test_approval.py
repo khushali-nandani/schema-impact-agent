@@ -65,7 +65,7 @@ def test_a_safe_change_never_pauses(before):
 def test_a_low_risk_judgment_does_not_pause(before):
     app, config = graph(judge_saying(LOW)), review_config("pr-1")
     result = app.invoke(
-        new_review(before, change_type(before, "orders", "amount", "VARCHAR")), config
+        new_review(before, change_type(before, "orders", "amount", "DOUBLE")), config
     )
     assert "__interrupt__" not in result
     assert result["needs_approval"] is False
@@ -74,7 +74,7 @@ def test_a_low_risk_judgment_does_not_pause(before):
 def test_a_high_risk_judgment_pauses(before):
     app, config = graph(judge_saying(HIGH)), review_config("pr-1")
     result = app.invoke(
-        new_review(before, change_type(before, "orders", "amount", "VARCHAR")), config
+        new_review(before, change_type(before, "orders", "amount", "DOUBLE")), config
     )
     assert "__interrupt__" in result
 
@@ -113,7 +113,7 @@ def test_a_new_graph_can_resume_from_the_saved_checkpoint(before, risky):
 def test_resuming_does_not_ask_the_judge_again(before):
     judge = judge_saying(HIGH)
     app, config = graph(judge), review_config("pr-1")
-    app.invoke(new_review(before, change_type(before, "orders", "amount", "VARCHAR")), config)
+    app.invoke(new_review(before, change_type(before, "orders", "amount", "DOUBLE")), config)
     asked = len(judge.calls)
     assert asked > 0
     approve(app, config, True)

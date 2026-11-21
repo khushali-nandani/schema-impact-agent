@@ -147,7 +147,7 @@ def test_report_summarises_counts_and_approval(before):
 
 def test_type_change_end_to_end_inputs(before):
     # the node chain works on a real diff: a type change is needs_review, not breaking
-    after = change_type(before, "orders", "amount", "VARCHAR")
+    after = change_type(before, "orders", "amount", "DOUBLE")
     state = new_review(before, after)
     state.update(parse_diff_node(state))
     state.update(compute_impact_node(state))

@@ -51,7 +51,7 @@ def test_a_breaking_change_is_predicted_breaking_where_it_reaches(before):
 
 
 def test_a_type_change_is_predicted_needs_review(before):
-    after = change_type(before, "orders", "amount", "VARCHAR")
+    after = change_type(before, "orders", "amount", "DOUBLE")
     assert predict_case(before, after, ALL) == {
         "customer_totals": R,
         "product_sales": N,

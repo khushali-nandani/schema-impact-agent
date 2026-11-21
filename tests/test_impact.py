@@ -99,7 +99,7 @@ def test_5_rename_a_column_used_in_an_expression(before):
 
 
 def test_6_type_change_needs_review_and_follows_the_chain(before):
-    change = ColumnTypeChanged("orders", "amount", "DECIMAL(10, 2)", "VARCHAR")
+    change = ColumnTypeChanged("orders", "amount", "DECIMAL(10, 2)", "DOUBLE")
     impacts = compute_impact(before, [change])
     assert places(impacts) == {
         ("customer_totals", "total"),
@@ -237,7 +237,7 @@ def test_a_model_that_cannot_run_breaks_every_reader_even_of_columns_it_does_not
 
 def test_a_type_change_does_not_do_that(before):
     # the queries still run: only what is computed from the column is affected
-    change = ColumnTypeChanged("orders", "amount", "DECIMAL(10, 2)", "VARCHAR")
+    change = ColumnTypeChanged("orders", "amount", "DECIMAL(10, 2)", "DOUBLE")
     assert ("top_customers", "name") not in places(compute_impact(before, [change]))
 
 

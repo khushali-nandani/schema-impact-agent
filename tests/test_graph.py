@@ -51,7 +51,7 @@ def test_a_safe_change_never_reaches_the_judge(before, config):
 
 def test_needs_review_impacts_are_judged_one_by_one(before, config):
     judge = low_judge()
-    after = change_type(before, "orders", "amount", "VARCHAR")
+    after = change_type(before, "orders", "amount", "DOUBLE")
     result = build_graph(judge).invoke(new_review(before, after), config)
     assert len(judge.calls) == len(result["impacts"]) == 3
     assert result["needs_approval"] is False
@@ -60,7 +60,7 @@ def test_needs_review_impacts_are_judged_one_by_one(before, config):
 
 def test_a_high_risk_judgment_flags_the_review_for_approval(before, config):
     judge = FakeJudge(Judgment(risk=HIGH, explanation="totals shift", fix="recheck"))
-    after = change_type(before, "orders", "amount", "VARCHAR")
+    after = change_type(before, "orders", "amount", "DOUBLE")
     result = build_graph(judge).invoke(new_review(before, after), config)
     assert result["needs_approval"] is True
 
