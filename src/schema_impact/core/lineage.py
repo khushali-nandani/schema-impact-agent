@@ -9,6 +9,7 @@ Edge kinds:
 - order_by: the source column is used in the query's ORDER BY (affects the whole model)
 """
 
+from collections.abc import Iterator
 from dataclasses import dataclass
 from graphlib import CycleError, TopologicalSorter
 
@@ -63,16 +64,25 @@ def build_lineage(project: Project) -> list[Edge]:
     Models are processed in dependency order. Once a model is done, its output columns are
     added to the schema as if it were a table, so models that read it can be resolved.
     """
-    schema = {table: dict(columns) for table, columns in project.schema.items()}
     edges: list[Edge] = []
-
-    for model in _in_dependency_order(project):
-        query = _qualified(model, schema, project.dialect)
+    for model, query, schema in qualified_models(project):
         edges.extend(_select_edges(model, query, schema, project.dialect))
         edges.extend(_clause_edges(model, query))
-        schema[model.name] = dict.fromkeys(query.named_selects, UNKNOWN_TYPE)
-
     return edges
+
+
+def qualified_models(project: Project) -> Iterator[tuple[Model, exp.Expression, Schema]]:
+    """Each model with its qualified query and the schema it was qualified against.
+
+    In dependency order. Once the caller moves on, the model's output columns join the schema as
+    if it were a table, so the models that read it can be resolved. The schema is the same
+    object every time and must not be changed by the caller.
+    """
+    schema = {table: dict(columns) for table, columns in project.schema.items()}
+    for model in _in_dependency_order(project):
+        query = _qualified(model, schema, project.dialect)
+        yield model, query, schema
+        schema[model.name] = dict.fromkeys(query.named_selects, UNKNOWN_TYPE)
 
 
 def model_outputs(project: Project) -> dict[str, list[str]]:
