@@ -1,0 +1,22 @@
+name: Schema impact
+
+on:
+  pull_request:
+
+# A comment needs write access to pull requests; nothing else is needed.
+permissions:
+  contents: read
+  pull-requests: write
+
+jobs:
+  schema-impact:
+    runs-on: ubuntu-latest
+    steps:
+      # The whole history, so that the commit the pull request started from is there.
+      - uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+
+      - uses: khushali-nandani/schema-impact-agent@main
+        with:
+          fail-on: breaking

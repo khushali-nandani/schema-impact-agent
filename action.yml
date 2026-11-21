@@ -1,0 +1,94 @@
+name: Schema impact
+description: >-
+  Comment on a pull request with the models and columns that its SQL or schema changes break
+  or silently change.
+
+inputs:
+  project-dir:
+    description: The folder of the project inside the repository (models/ and schema.sql).
+    default: "."
+  adapter:
+    description: "sql for a folder of SQL files, dbt for a dbt project's target/ artifacts."
+    default: sql
+  before-dir:
+    description: >-
+      dbt only: the folder with the artifacts of the base (target/manifest.json and
+      target/catalog.json), for example from the last production run.
+    default: ""
+  after-dir:
+    description: >-
+      dbt only: the folder of the head, after `dbt compile`. Its catalog is optional, the one
+      of before-dir is used when it has none.
+    default: ""
+  dialect:
+    description: The SQL dialect of the models.
+    default: duckdb
+  fail-on:
+    description: "Fail the job on an impact at this level or worse: breaking, needs_review or never."
+    default: breaking
+  comment:
+    description: Set to false to only fail or pass, without a comment.
+    default: "true"
+  github-token:
+    description: The token used to write the comment. It needs pull-requests write access.
+    default: ${{ github.token }}
+
+runs:
+  using: composite
+  steps:
+    - id: python
+      uses: actions/setup-python@v5
+      with:
+        python-version: "3.12"
+
+    - id: install
+      shell: bash
+      env:
+        ACTION_PATH: ${{ github.action_path }}
+      run: python -m pip install --quiet "$ACTION_PATH"
+
+    # Makes the review and hands its exit code on instead of failing, so that the comment is
+    # written even when the check is going to fail. Exit code 2 means it could not run.
+    - id: review
+      shell: bash
+      env:
+        ADAPTER: ${{ inputs.adapter }}
+        DIALECT: ${{ inputs.dialect }}
+        FAIL_ON: ${{ inputs.fail-on }}
+        PROJECT_DIR: ${{ inputs.project-dir }}
+        BEFORE_DIR: ${{ inputs.before-dir }}
+        AFTER_DIR: ${{ inputs.after-dir }}
+        REPO_DIR: ${{ github.workspace }}
+        BASE_SHA: ${{ github.event.pull_request.base.sha }}
+        HEAD_SHA: ${{ github.event.pull_request.head.sha }}
+      run: |
+        report="$RUNNER_TEMP/schema-impact-report.md"
+        args=(diff --adapter "$ADAPTER" --dialect "$DIALECT" --fail-on "$FAIL_ON" --format markdown)
+        if [ -n "$BEFORE_DIR" ] && [ -n "$AFTER_DIR" ]; then
+          args+=("$BEFORE_DIR" "$AFTER_DIR")
+        else
+          args+=(--base "$BASE_SHA" --head "$HEAD_SHA" --repo "$REPO_DIR")
+          if [ "$PROJECT_DIR" != "." ]; then args+=(--project-dir "$PROJECT_DIR"); fi
+        fi
+        set +e
+        schema-impact "${args[@]}" > "$report"
+        code=$?
+        set -e
+        echo "exit-code=$code" >> "$GITHUB_OUTPUT"
+        echo "report=$report" >> "$GITHUB_OUTPUT"
+        exit 0
+
+    - id: comment
+      if: inputs.comment == 'true' && steps.review.outputs.exit-code != '2'
+      shell: bash
+      env:
+        REPORT: ${{ steps.review.outputs.report }}
+        GITHUB_TOKEN: ${{ inputs.github-token }}
+      run: schema-impact comment "$REPORT"
+
+    - id: finish
+      if: always()
+      shell: bash
+      env:
+        EXIT_CODE: ${{ steps.review.outputs.exit-code }}
+      run: exit "${EXIT_CODE:-1}"
