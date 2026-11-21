@@ -181,3 +181,16 @@ def test_reading_a_column_as_varchar_shows_up_in_the_schema_of_the_project(
 
 def test_the_original_csv_files_are_still_untouched_after_all_of_it(all_mutations):
     assert len(csv_hashes()) == 9
+
+
+def test_building_the_unmutated_project_twice_gives_the_same_output(baseline, workdir):
+    """customer_rfm does not, with DuckDB on several threads: see test_dbt_runner_threads.py."""
+    from schema_impact.evals.tablediff import outputs_changed
+
+    again = run_baseline(OLIST, workdir / "again")
+    differing = [
+        model
+        for model in baseline.statuses
+        if outputs_changed(baseline.database, again.database, model)
+    ]
+    assert differing == []
