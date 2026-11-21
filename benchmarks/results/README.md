@@ -19,3 +19,5 @@ The fixes were chosen by reading the errors of this dataset, so the later rows a
 | File | State of the code |
 |---|---|
 | `2026-11-21-olist-held-out.md` | the code of v0.4.0, scored once on `../dataset/olist.json` before any change. The report was committed before it was read, so this is the held-out result. Later Olist files, if any, are tuned on its errors and say so. |
+| `2026-11-21-olist-after-text-types.md` | fix 1: a column that becomes text breaks the models that sum, divide or `date_diff` it, and everything that reads them. **Tuned** on the errors of the held-out run, so not a held-out estimate. |
+| `2026-11-21-jaffle-after-text-types.md` | the same code on jaffle_shop (also not held-out): the 3 breaking pairs that stayed `needs_review` are now breaking. |
