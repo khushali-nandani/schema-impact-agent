@@ -20,6 +20,9 @@ The change is then followed from scope to scope, in order:
 - a changed column that a later scope reads in its frame (a join key, a filter, a grouping) changes
   that scope's rows, hence all its columns; one it only selects or aggregates changes only the
   columns made from it
+- an ORDER BY that reads a changed output column, by its alias or its position, does the same:
+  qualify writes an alias read by WHERE, GROUP BY, HAVING or QUALIFY as the expression behind it,
+  so the text of those clauses shows the change, but ORDER BY keeps the alias
 
 If the rows of the final select changed, the answer is None. So it is for anything this does not
 understand: a different set or order of output columns, a CTE added or removed, a UNION, SQL that
@@ -70,6 +73,11 @@ def changed_outputs(
             has_subquery = new.projection_has_subquery[name]
             if any(c in changed_columns[k] for k, c in read) or (has_subquery and upstream_changed):
                 columns.add(name)
+        rows = rows or any(alias in columns for alias in new.order_aliases)
+        rows = rows or any(
+            0 < number <= len(new.names) and new.names[number - 1] in columns
+            for number in new.order_positions
+        )
         if rows:
             columns = set(old.names)
         changed_columns.append(columns)
@@ -90,6 +98,8 @@ class _Scope:
         self.projection_has_subquery: dict[str, bool] = {}
         self.frame_columns: set[tuple[int, str]] = set()
         self.frame_has_subquery = False
+        self.order_aliases: set[str] = set()  # output columns its ORDER BY reads by name
+        self.order_positions: set[int] = set()  # ... and by position (ORDER BY 2), from 1
 
 
 def _read(sql: str, schema: Schema, dialect: str) -> list[_Scope] | None:
@@ -132,6 +142,15 @@ def _describe(scope: Scope, position: dict[int, int]) -> _Scope:
         columns, subquery = _reads_of(projection, scope, position)
         described.projection_columns[projection.alias_or_name] = columns
         described.projection_has_subquery[projection.alias_or_name] = subquery
+    order = select.args.get("order")
+    if order is not None:
+        for column in order.find_all(exp.Column):
+            if not column.table:  # qualify leaves only an alias unqualified
+                described.order_aliases.add(column.name)
+        for ordered in order.expressions:
+            key = ordered.this
+            if isinstance(key, exp.Literal) and key.is_int:
+                described.order_positions.add(int(key.name))
     for key, value in select.args.items():
         if key in _NOT_FRAME or value is None:
             continue
