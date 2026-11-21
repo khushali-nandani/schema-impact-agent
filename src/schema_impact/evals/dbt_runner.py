@@ -11,6 +11,11 @@ Big data files: a project's `data/` folder (the CSV files that dbt-duckdb source
 copied for every case. The copy gets a real `data/` folder whose files are links to the originals.
 A mutation that edits one of them replaces the link with a new file (see `_write_csv` in
 mutations.py), so the original is never written to. Symlinks: macOS and Linux only.
+
+Reproducible builds: DuckDB runs on one thread in the copy that is built (the copy's profile is
+changed, the project's is not). With several threads a window function over tied values, such as
+Olist's `ntile(5) over (order by ...)`, gets its rows in a different order each time, so two
+identical builds differ and a model would be labelled "silent" for no reason.
 """
 
 import json
@@ -162,6 +167,22 @@ def _copy_project(source: Path, destination: Path) -> None:
     shutil.copytree(source, destination, ignore=ignore)
     for folder in _LINKED_FOLDERS:
         _link_files(source / folder, destination / folder)
+    _run_duckdb_on_one_thread(destination)
+
+
+def _run_duckdb_on_one_thread(project_dir: Path) -> None:
+    """Set `settings: {threads: 1}` on every duckdb output of the copy's profiles.yml."""
+    path = project_dir / "profiles.yml"
+    if not path.is_file():
+        return
+    import yaml  # comes with dbt
+
+    profiles = yaml.safe_load(path.read_text()) or {}
+    for profile in profiles.values():
+        for output in (profile.get("outputs") or {}).values():
+            if output.get("type") == "duckdb":
+                output.setdefault("settings", {})["threads"] = 1
+    path.write_text(yaml.safe_dump(profiles, sort_keys=False))
 
 
 def _link_files(source: Path, destination: Path) -> None:
